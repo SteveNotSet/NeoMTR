@@ -458,6 +458,8 @@
 	"gui.mtr.placement_editor_fixed_interval": "Fixed",
 	"gui.mtr.placement_editor_manual": "Manual",
 	"gui.mtr.placement_editor_no_layers": "No placement layers",
+	"gui.mtr.placement_editor_swap_direction": "Swap Direction",
+	"gui.mtr.placement_editor_selected_offset": "Position:",
 	"item.mtr.apg_door": "Automatic Platform Gates",
 	"item.mtr.apg_glass": "Automatic Platform Gates",
 	"item.mtr.apg_glass_end": "Automatic Platform Gates",

@@ -4,10 +4,6 @@ import cn.zbx1425.mtrsteamloco.data.RailModelRegistry;
 import cn.zbx1425.sowcer.batch.BatchManager;
 import cn.zbx1425.sowcer.batch.ShaderProp;
 import cn.zbx1425.sowcer.math.Matrix4f;
-import mtr.data.Rail;
-import mtr.data.RailAngle;
-import net.minecraft.core.BlockPos;
-import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -16,13 +12,12 @@ import net.minecraft.world.phys.Vec3;
 import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedList;
 
 public abstract class RailChunkBase implements Closeable {
 
     public Long chunkId;
     public AABB boundingBox;
-    public HashMap<BakedRail, ArrayList<Matrix4f>> containingRails = new HashMap<>();
+    public HashMap<BakedRail, RailTranformList> containingRails = new HashMap<>();
 
     public final String modelKey;
 
@@ -69,13 +64,23 @@ public abstract class RailChunkBase implements Closeable {
     }
 
     public void addRail(BakedRail rail, String modelKey) {
-        HashMap<Long, ArrayList<Matrix4f>> chunks = rail.modelChunks.get(modelKey);
-        if (chunks != null) {
-            ArrayList<Matrix4f> matrices = chunks.get(chunkId);
-            if (matrices != null) {
-                containingRails.put(rail, matrices);
-                isDirty = true;
-            }
+        ArrayList<Matrix4f> interior = new ArrayList<>();
+        ArrayList<BakedRail.TransformOnBoundary> boundary = new ArrayList<>();
+
+        HashMap<Long, ArrayList<Matrix4f>> interiorChunks = rail.interiorModelsByChunks.get(modelKey);
+        if (interiorChunks != null) {
+            ArrayList<Matrix4f> matrices = interiorChunks.get(chunkId);
+            if (matrices != null) interior.addAll(matrices);
+        }
+        HashMap<Long, ArrayList<BakedRail.TransformOnBoundary>> boundaryChunks = rail.boundaryModelsByChunks.get(modelKey);
+        if (boundaryChunks != null) {
+            ArrayList<BakedRail.TransformOnBoundary> boundaryMatrices = boundaryChunks.get(chunkId);
+            if (boundaryMatrices != null) boundary.addAll(boundaryMatrices);
+        }
+
+        if (!interior.isEmpty() || !boundary.isEmpty()) {
+            containingRails.put(rail, new RailTranformList(interior, boundary));
+            isDirty = true;
         }
     }
 
@@ -92,6 +97,10 @@ public abstract class RailChunkBase implements Closeable {
 
     @Override
     public void close() {
+
+    }
+
+    public record RailTranformList(ArrayList<Matrix4f> interiorTransforms, ArrayList<BakedRail.TransformOnBoundary> boundaryTransforms) {
 
     }
 }

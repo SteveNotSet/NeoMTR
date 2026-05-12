@@ -197,7 +197,14 @@ public class PlacementEditorScreen extends SelectListScreen {
 
         Button btnManual = UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.placement_editor_manual"),
-                sender -> { selected.placementMode = PlacementMode.MANUAL; sendUpdate(); Minecraft.getInstance().tell(this::loadPage); }
+                sender -> {
+                    if (selected.placementMode != PlacementMode.MANUAL) {
+                        selected.manualPositions = computePositionsForCurrentMode(selected);
+                    }
+                    selected.placementMode = PlacementMode.MANUAL;
+                    sendUpdate();
+                    Minecraft.getInstance().tell(this::loadPage);
+                }
         );
         btnManual.active = selected.placementMode != PlacementMode.MANUAL;
         IDrawing.setPositionAndWidth(addRenderableWidget(btnManual), rightPanelX + modeButtonWidth * 2, y, rightPanelWidth - modeButtonWidth * 2);
@@ -296,25 +303,128 @@ public class PlacementEditorScreen extends SelectListScreen {
         )), x + btnW + 4, y, btnW);
     }
 
+    private WidgetManualPositionBar currentBar;
+    private WidgetBetterTextField positionInputField;
+
     private void loadManualPanel(RailModelPlacement placement, int x, int y, int w) {
         addRenderableWidget(new WidgetBetterCheckbox(x, y, w, SQUARE_SIZE,
                 Text.translatable("gui.mtr.placement_editor_reversed"),
                 checked -> { placement.reversed = checked; sendUpdate(); }
         )).setChecked(placement.reversed);
+        y += SQUARE_SIZE + 2;
+
+        int halfW = w / 2 - 2;
+        IDrawing.setPositionAndWidth(addRenderableWidget(UtilitiesClient.newButton(
+                Text.translatable("gui.mtr.placement_editor_swap_direction"),
+                sender -> {
+                    float railLen = pickedRail != null ? (float) pickedRail.getLength() : 100f;
+                    List<Float> flipped = new ArrayList<>();
+                    for (float pos : placement.manualPositions) {
+                        flipped.add(quantizePosition(railLen - pos));
+                    }
+                    Collections.reverse(flipped);
+                    placement.manualPositions = flipped;
+                    sendUpdate();
+                    Minecraft.getInstance().tell(this::loadPage);
+                }
+        )), x, y, halfW);
         y += SQUARE_SIZE + 4;
 
         float railLength = pickedRail != null ? (float) pickedRail.getLength() : 100f;
-        WidgetManualPositionBar bar = new WidgetManualPositionBar(x, y, w, positions -> {
+        currentBar = new WidgetManualPositionBar(x, y, w, positions -> {
             placement.manualPositions = new ArrayList<>(positions);
             sendUpdate();
         });
-        bar.setRailLength(railLength);
-        bar.setPositions(placement.manualPositions);
-        addRenderableWidget(bar);
-        y += bar.getHeight() + 4;
+        currentBar.setRailLength(railLength);
+        currentBar.setPositions(placement.manualPositions);
+        currentBar.setOnSelectionChange(() -> updatePositionInputField(placement));
+        addRenderableWidget(currentBar);
+        y += currentBar.getHeight() + 4;
 
         addRenderableWidget(new WidgetLabel(x, y, w,
-                Text.literal(String.format("Positions: %d  (left click to add, right click to remove)", placement.manualPositions.size()))));
+                Text.literal(String.format("Positions: %d  (L-click: add/select, R-click: remove)", placement.manualPositions.size()))));
+        y += SQUARE_SIZE - 2;
+
+        addRenderableWidget(new WidgetLabel(x, y + 6, halfW,
+                Text.translatable("gui.mtr.placement_editor_selected_offset")));
+        positionInputField = new WidgetBetterTextField("", 10);
+        IDrawing.setPositionAndWidth(addRenderableWidget(positionInputField), x + halfW + 4, y, halfW);
+        updatePositionInputField(placement);
+        positionInputField.setResponder(text -> {
+            if (currentBar == null) return;
+            int sel = currentBar.getSelectedIndex();
+            if (sel < 0) return;
+            try {
+                float val = Float.parseFloat(text);
+                val = quantizePosition(val);
+                currentBar.setPositionAt(sel, val);
+                positionInputField.setTextColor(0xE0E0E0);
+            } catch (NumberFormatException e) {
+                positionInputField.setTextColor(0xFF0000);
+            }
+        });
+    }
+
+    private void updatePositionInputField(RailModelPlacement placement) {
+        if (positionInputField == null || currentBar == null) return;
+        int sel = currentBar.getSelectedIndex();
+        if (sel >= 0 && sel < placement.manualPositions.size()) {
+            positionInputField.active = true;
+            positionInputField.setValue(String.format("%.3f", currentBar.getSelectedPosition()));
+            positionInputField.setTextColor(0xE0E0E0);
+        } else {
+            positionInputField.active = false;
+            positionInputField.setValue("");
+        }
+    }
+
+    private static float quantizePosition(float value) {
+        return Math.round(value * 1000f) / 1000f;
+    }
+
+    private List<Float> computePositionsForCurrentMode(RailModelPlacement p) {
+        float railLength = pickedRail != null ? (float) pickedRail.getLength() : 100f;
+        float interval = p.intervalOverride;
+        if (interval <= 0) {
+            RailModelProperties props = RailModelRegistry.elements.get(p.modelKey);
+            if (props != null) interval = props.repeatInterval;
+        }
+        if (interval <= 0) interval = 1.0f;
+
+        List<Float> result = new ArrayList<>();
+        switch (p.placementMode) {
+            case STRETCH_INTERVAL: {
+                if (railLength < interval * 0.5f) {
+                    result.add(quantizePosition(railLength / 2));
+                    break;
+                }
+                int N = Math.max(2, Math.round(railLength / interval) + 1);
+                float actualI = railLength / (N - 1);
+                for (int k = 0; k < N; k++) {
+                    result.add(quantizePosition(k * actualI));
+                }
+                break;
+            }
+            case FIXED_INTERVAL: {
+                if (p.offsetFromStart) {
+                    for (float t = p.offset; t < railLength - 0.001f; t += interval) {
+                        result.add(quantizePosition(t));
+                    }
+                } else {
+                    List<Float> tmp = new ArrayList<>();
+                    for (float t = railLength - p.offset; t > 0.001f; t -= interval) {
+                        tmp.add(quantizePosition(t));
+                    }
+                    Collections.reverse(tmp);
+                    result.addAll(tmp);
+                }
+                break;
+            }
+            default:
+                result.addAll(p.manualPositions);
+                break;
+        }
+        return result;
     }
 
     private void sendPropagate(RailModelPlacement placement, boolean undo) {

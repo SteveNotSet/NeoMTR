@@ -14,13 +14,12 @@ import cn.zbx1425.sowcer.vertex.VertAttrState;
 import cn.zbx1425.sowcer.vertex.VertAttrType;
 import cn.zbx1425.sowcerext.model.RawModel;
 import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Map;
 
 public class MeshBuildingRailChunk extends RailChunkBase {
@@ -52,17 +51,32 @@ public class MeshBuildingRailChunk extends RailChunkBase {
 
         float yMin = 256, yMax = -64;
         RawModel combinedModel = new RawModel();
-        for (Map.Entry<BakedRail, ArrayList<Matrix4f>> entry : containingRails.entrySet()) {
-            ArrayList<Matrix4f> railSpan = entry.getValue();
-            for (Matrix4f pieceMat : railSpan) {
+        HashSet<Long> seenBoundaryKeys = new HashSet<>();
+
+        for (Map.Entry<BakedRail, RailChunkBase.RailTranformList> entry : containingRails.entrySet()) {
+            int color = entry.getKey().color;
+            RailChunkBase.RailTranformList transforms = entry.getValue();
+
+            for (Matrix4f pieceMat : transforms.interiorTransforms()) {
                 final Vector3f lightPos = pieceMat.getTranslationPart();
                 yMin = Math.min(yMin, lightPos.y());
                 yMax = Math.max(yMax, lightPos.y());
                 final BlockPos lightBlockPos = new BlockPos(Mth.floor(lightPos.x()), Mth.floor(lightPos.y() + 0.1), Mth.floor(lightPos.z()));
                 final int light = LightTexture.pack(world.getBrightness(LightLayer.BLOCK, lightBlockPos), world.getBrightness(LightLayer.SKY, lightBlockPos));
-                combinedModel.appendTransformed(railModel, pieceMat, entry.getKey().color, light);
+                combinedModel.appendTransformed(railModel, pieceMat, color, light);
+            }
+            for (BakedRail.TransformOnBoundary bt : transforms.boundaryTransforms()) {
+                if (!seenBoundaryKeys.add(bt.blockPosHash())) continue;
+                Matrix4f pieceMat = bt.matrix();
+                final Vector3f lightPos = pieceMat.getTranslationPart();
+                yMin = Math.min(yMin, lightPos.y());
+                yMax = Math.max(yMax, lightPos.y());
+                final BlockPos lightBlockPos = new BlockPos(Mth.floor(lightPos.x()), Mth.floor(lightPos.y() + 0.1), Mth.floor(lightPos.z()));
+                final int light = LightTexture.pack(world.getBrightness(LightLayer.BLOCK, lightBlockPos), world.getBrightness(LightLayer.SKY, lightBlockPos));
+                combinedModel.appendTransformed(railModel, pieceMat, color, light);
             }
         }
+
         if (vertArrays != null) vertArrays.close();
         if (uploadedCombinedModel != null) uploadedCombinedModel.close();
         uploadedCombinedModel = combinedModel.upload(RAIL_MAPPING);

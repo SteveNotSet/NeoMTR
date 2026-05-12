@@ -21,17 +21,24 @@ public class WidgetManualPositionBar extends AbstractWidget {
 
     private float railLength = 100f;
     private final List<Float> positions = new ArrayList<>();
-    private int dragIndex = -1;
+    private int selectedIndex = -1;
+    private boolean isDragging = false;
     private final Consumer<List<Float>> onChange;
+    private Runnable onSelectionChange;
 
     private static final int HANDLE_HALF_W = 3;
     private static final int BAR_HEIGHT = 12;
     private static final int HANDLE_HEIGHT = 18;
     private static final int MARGIN = 10;
+    private static final float QUANTIZE_STEP = 0.001f;
 
     public WidgetManualPositionBar(int x, int y, int width, Consumer<List<Float>> onChange) {
         super(x, y, width, HANDLE_HEIGHT + 14, Component.empty());
         this.onChange = onChange;
+    }
+
+    public void setOnSelectionChange(Runnable callback) {
+        this.onSelectionChange = callback;
     }
 
     public void setRailLength(float railLength) {
@@ -42,10 +49,35 @@ public class WidgetManualPositionBar extends AbstractWidget {
         this.positions.clear();
         this.positions.addAll(newPositions);
         Collections.sort(this.positions);
+        if (selectedIndex >= positions.size()) {
+            selectedIndex = positions.isEmpty() ? -1 : positions.size() - 1;
+        }
     }
 
     public List<Float> getPositions() {
         return Collections.unmodifiableList(positions);
+    }
+
+    public int getSelectedIndex() {
+        return selectedIndex;
+    }
+
+    public float getSelectedPosition() {
+        if (selectedIndex >= 0 && selectedIndex < positions.size()) {
+            return positions.get(selectedIndex);
+        }
+        return -1;
+    }
+
+    public void setPositionAt(int index, float value) {
+        if (index >= 0 && index < positions.size()) {
+            positions.set(index, quantize(Math.max(0, Math.min(railLength, value))));
+            notifyChange();
+        }
+    }
+
+    private static float quantize(float value) {
+        return Math.round(value / QUANTIZE_STEP) * QUANTIZE_STEP;
     }
 
     private int barLeft() { return getX() + MARGIN; }
@@ -99,7 +131,7 @@ public class WidgetManualPositionBar extends AbstractWidget {
 
         for (int i = 0; i < positions.size(); i++) {
             int px = posToPixel(positions.get(i));
-            int color = (i == dragIndex) ? 0xFFFFFF00 : 0xFF00FF00;
+            int color = (i == selectedIndex) ? 0xFFFFFF00 : 0xFF00FF00;
 #if MC_VERSION >= "12000"
             guiGraphics.fill(px - HANDLE_HALF_W, bcy - HANDLE_HEIGHT / 2, px + HANDLE_HALF_W, bcy + HANDLE_HEIGHT / 2, color);
 #else
@@ -115,51 +147,56 @@ public class WidgetManualPositionBar extends AbstractWidget {
         if (mouseY < barCenterY() - HANDLE_HEIGHT / 2 - 2 || mouseY > barCenterY() + HANDLE_HEIGHT / 2 + 2) return false;
 
         if (button == 0) {
-            int closestIdx = -1;
-            double closestDist = Double.MAX_VALUE;
-            for (int i = 0; i < positions.size(); i++) {
-                double dist = Math.abs(posToPixel(positions.get(i)) - mouseX);
-                if (dist < closestDist && dist <= HANDLE_HALF_W + 4) {
-                    closestDist = dist;
-                    closestIdx = i;
-                }
-            }
+            int closestIdx = findClosestHandle(mouseX);
             if (closestIdx >= 0) {
-                dragIndex = closestIdx;
+                selectedIndex = closestIdx;
+                isDragging = true;
             } else {
-                float newPos = pixelToPos(mouseX);
+                float newPos = quantize(pixelToPos(mouseX));
                 positions.add(newPos);
                 Collections.sort(positions);
-                dragIndex = positions.indexOf(newPos);
+                selectedIndex = positions.indexOf(newPos);
+                isDragging = true;
                 notifyChange();
             }
+            notifySelectionChange();
             return true;
         } else if (button == 1) {
-            int closestIdx = -1;
-            double closestDist = Double.MAX_VALUE;
-            for (int i = 0; i < positions.size(); i++) {
-                double dist = Math.abs(posToPixel(positions.get(i)) - mouseX);
-                if (dist < closestDist && dist <= HANDLE_HALF_W + 4) {
-                    closestDist = dist;
-                    closestIdx = i;
-                }
-            }
+            int closestIdx = findClosestHandle(mouseX);
             if (closestIdx >= 0) {
                 positions.remove(closestIdx);
-                dragIndex = -1;
+                if (selectedIndex >= positions.size()) {
+                    selectedIndex = positions.isEmpty() ? -1 : positions.size() - 1;
+                }
+                isDragging = false;
                 notifyChange();
+                notifySelectionChange();
                 return true;
             }
         }
         return false;
     }
 
+    private int findClosestHandle(double mouseX) {
+        int closestIdx = -1;
+        double closestDist = Double.MAX_VALUE;
+        for (int i = 0; i < positions.size(); i++) {
+            double dist = Math.abs(posToPixel(positions.get(i)) - mouseX);
+            if (dist < closestDist && dist <= HANDLE_HALF_W + 4) {
+                closestDist = dist;
+                closestIdx = i;
+            }
+        }
+        return closestIdx;
+    }
+
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (dragIndex >= 0 && dragIndex < positions.size() && button == 0) {
-            float newPos = pixelToPos(mouseX);
-            positions.set(dragIndex, newPos);
+        if (isDragging && selectedIndex >= 0 && selectedIndex < positions.size() && button == 0) {
+            float newPos = quantize(pixelToPos(mouseX));
+            positions.set(selectedIndex, newPos);
             notifyChange();
+            notifySelectionChange();
             return true;
         }
         return false;
@@ -167,10 +204,14 @@ public class WidgetManualPositionBar extends AbstractWidget {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (dragIndex >= 0 && button == 0) {
+        if (isDragging && button == 0) {
+            isDragging = false;
+            float draggedValue = (selectedIndex >= 0 && selectedIndex < positions.size())
+                    ? positions.get(selectedIndex) : -1;
             Collections.sort(positions);
-            dragIndex = -1;
+            selectedIndex = draggedValue >= 0 ? positions.indexOf(draggedValue) : -1;
             notifyChange();
+            notifySelectionChange();
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);
@@ -178,6 +219,10 @@ public class WidgetManualPositionBar extends AbstractWidget {
 
     private void notifyChange() {
         onChange.accept(Collections.unmodifiableList(positions));
+    }
+
+    private void notifySelectionChange() {
+        if (onSelectionChange != null) onSelectionChange.run();
     }
 
 #if MC_VERSION >= "11903"

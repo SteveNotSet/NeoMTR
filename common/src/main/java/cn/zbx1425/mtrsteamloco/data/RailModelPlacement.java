@@ -413,10 +413,11 @@ public class RailModelPlacement {
     }
 
     /**
-     * Tangent at the exit node (t=L end) of the rail, using the rail's facingEnd angle.
+     * Tangent at the exit node (t=L end), pointing forward (away from the rail).
+     * facingEnd points backward (toward start), so we negate.
      */
     private static Vec3 computeExitTangent(Rail rail) {
-        return new Vec3(rail.facingEnd.cos, 0, rail.facingEnd.sin);
+        return new Vec3(-rail.facingEnd.cos, 0, -rail.facingEnd.sin);
     }
 
     /**

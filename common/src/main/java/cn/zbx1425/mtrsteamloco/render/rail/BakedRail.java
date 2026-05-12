@@ -12,16 +12,16 @@ import java.util.*;
 
 public class BakedRail {
 
-    public Map<String, HashMap<Long, ArrayList<Matrix4f>>> modelChunks = new HashMap<>();
+    public record TransformOnBoundary(long blockPosHash, Matrix4f matrix) {}
 
-    public Set<Long> contributedNodeHashes = new HashSet<>();
+    public Map<String, HashMap<Long, ArrayList<Matrix4f>>> interiorModelsByChunks = new HashMap<>();
+    public Map<String, HashMap<Long, ArrayList<TransformOnBoundary>>> boundaryModelsByChunks = new HashMap<>();
 
     public static final int POS_SHIFT = 1;
 
     public int color;
 
-    public BakedRail(Rail rail, BlockPos posStart, BlockPos posEnd,
-                     HashSet<Long> renderedNodeModels) {
+    public BakedRail(Rail rail, BlockPos posStart, BlockPos posEnd) {
         color = AttrUtil.argbToBgr(rail.railType.color | 0xFF000000);
         boolean isCanonical = posStart.asLong() <= posEnd.asLong();
         BlockPos canonStart = isCanonical ? posStart : posEnd;
@@ -38,91 +38,124 @@ public class BakedRail {
             float interval = placement.resolveInterval(props);
             float yOffset = props.yOffset;
 
-            List<Double> canonPositions = computePositions(
-                    placement, railLength, interval, renderedNodeModels,
-                    canonStart, canonEnd);
-
-            HashMap<Long, ArrayList<Matrix4f>> chunks =
-                    modelChunks.computeIfAbsent(resolvedKey, k -> new HashMap<>());
-
             boolean effectiveReversed = isCanonical ? placement.reversed : !placement.reversed;
 
-            for (double tCanon : canonPositions) {
-                double tLocal = isCanonical ? tCanon : (railLength - tCanon);
-                Vec3 pos = rail.getPosition(tLocal);
-                double tFwd = Math.min(tLocal + 0.01, railLength);
-                Vec3 fwd = rail.getPosition(tFwd);
+            PositionResult posResult = computePositions(
+                    placement, railLength, interval, canonStart, canonEnd);
 
-                float xc = (float) pos.x;
-                float yc = (float) pos.y + yOffset;
-                float zc = (float) pos.z;
-                float xf = (float) fwd.x;
-                float yf = (float) fwd.y + yOffset;
-                float zf = (float) fwd.z;
+            HashMap<Long, ArrayList<Matrix4f>> chunks =
+                    interiorModelsByChunks.computeIfAbsent(resolvedKey, k -> new HashMap<>());
+            HashMap<Long, ArrayList<TransformOnBoundary>> nChunks =
+                    boundaryModelsByChunks.computeIfAbsent(resolvedKey, k -> new HashMap<>());
 
-                chunks.computeIfAbsent(chunkIdFromWorldPos(Mth.floor(xc), Mth.floor(zc)),
-                                ignored -> new ArrayList<>())
-                        .add(getLookAtMat(xc, yc, zc, xf, yf, zf, interval, effectiveReversed));
+            for (double tCanon : posResult.interior) {
+                addInteriorMatrix(rail, tCanon, isCanonical, railLength,
+                        yOffset, interval, effectiveReversed, chunks);
+            }
+            for (BoundaryPosition np : posResult.boundary) {
+                Matrix4f mat = computeMatrix(rail, np.tCanon, isCanonical, railLength,
+                        yOffset, interval, effectiveReversed);
+                Vec3 pos = rail.getPosition(isCanonical ? np.tCanon : (railLength - np.tCanon));
+                long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
+                nChunks.computeIfAbsent(chunkId, ignored -> new ArrayList<>())
+                        .add(new TransformOnBoundary(np.blockPosHash, mat));
             }
         }
     }
 
-    private List<Double> computePositions(RailModelPlacement p, double L, float I,
-                                          HashSet<Long> renderedNodeModels,
-                                          BlockPos canonStart, BlockPos canonEnd) {
+    private record BoundaryPosition(double tCanon, long blockPosHash) {}
+    private record PositionResult(List<Double> interior, List<BoundaryPosition> boundary) {}
+
+    private void addInteriorMatrix(Rail rail, double tCanon, boolean isCanonical,
+                                   double railLength, float yOffset, float interval,
+                                   boolean effectiveReversed,
+                                   HashMap<Long, ArrayList<Matrix4f>> chunks) {
+        Matrix4f mat = computeMatrix(rail, tCanon, isCanonical, railLength,
+                yOffset, interval, effectiveReversed);
+        double tLocal = isCanonical ? tCanon : (railLength - tCanon);
+        Vec3 pos = rail.getPosition(tLocal);
+        long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
+        chunks.computeIfAbsent(chunkId, ignored -> new ArrayList<>()).add(mat);
+    }
+
+    private Matrix4f computeMatrix(Rail rail, double tCanon, boolean isCanonical,
+                                   double railLength, float yOffset, float interval,
+                                   boolean effectiveReversed) {
+        double tLocal = isCanonical ? tCanon : (railLength - tCanon);
+        Vec3 pos = rail.getPosition(tLocal);
+
+        double tA, tB;
+        if (tLocal + 0.01 <= railLength) {
+            tA = tLocal;
+            tB = tLocal + 0.01;
+        } else if (tLocal - 0.01 >= 0) {
+            tA = tLocal - 0.01;
+            tB = tLocal;
+        } else {
+            tA = 0;
+            tB = railLength;
+        }
+        Vec3 pA = rail.getPosition(tA);
+        Vec3 pB = rail.getPosition(tB);
+
+        float xc = (float) pos.x;
+        float yc = (float) pos.y + yOffset;
+        float zc = (float) pos.z;
+        float xf = xc + (float)(pB.x - pA.x);
+        float yf = yc + (float)(pB.y - pA.y);
+        float zf = zc + (float)(pB.z - pA.z);
+
+        return getLookAtMat(xc, yc, zc, xf, yf, zf, interval, effectiveReversed);
+    }
+
+    private PositionResult computePositions(RailModelPlacement p, double L, float I,
+                                            BlockPos canonStart, BlockPos canonEnd) {
+        List<Double> interior = new ArrayList<>();
+        List<BoundaryPosition> boundary = new ArrayList<>();
+
         switch (p.placementMode) {
             case STRETCH_INTERVAL: {
                 if (L < I * 0.5) {
-                    return Collections.singletonList(L / 2);
+                    interior.add(L / 2);
+                    break;
                 }
                 int N = Math.max(2, Math.round((float) (L / I)) + 1);
                 double actualI = L / (N - 1);
-                List<Double> result = new ArrayList<>(N);
                 for (int k = 0; k < N; k++) {
                     double t = k * actualI;
                     if (k == 0) {
-                        long hash = nodeModelHash(p.modelKey, canonStart);
-                        if (!renderedNodeModels.add(hash)) continue;
-                        contributedNodeHashes.add(hash);
+                        boundary.add(new BoundaryPosition(t, canonStart.asLong()));
                     } else if (k == N - 1) {
-                        long hash = nodeModelHash(p.modelKey, canonEnd);
-                        if (!renderedNodeModels.add(hash)) continue;
-                        contributedNodeHashes.add(hash);
+                        boundary.add(new BoundaryPosition(t, canonEnd.asLong()));
+                    } else {
+                        interior.add(t);
                     }
-                    result.add(t);
                 }
-                return result;
+                break;
             }
             case FIXED_INTERVAL: {
-                List<Double> result = new ArrayList<>();
                 if (p.offsetFromStart) {
                     for (double t = p.offset; t < L - 0.001; t += I) {
-                        result.add(t);
+                        interior.add(t);
                     }
                 } else {
                     for (double t = L - p.offset; t > 0.001; t -= I) {
-                        result.add(t);
+                        interior.add(t);
                     }
-                    Collections.reverse(result);
+                    Collections.reverse(interior);
                 }
-                return result;
+                break;
             }
             case MANUAL: {
-                List<Double> result = new ArrayList<>(p.manualPositions.size());
                 for (float pos : p.manualPositions) {
                     if (pos >= 0 && pos <= L) {
-                        result.add((double) pos);
+                        interior.add((double) pos);
                     }
                 }
-                return result;
+                break;
             }
-            default:
-                return Collections.emptyList();
         }
-    }
-
-    private static long nodeModelHash(String modelKey, BlockPos pos) {
-        return (long) modelKey.hashCode() * 31L + pos.hashCode();
+        return new PositionResult(interior, boundary);
     }
 
     public static long chunkIdFromWorldPos(float bpX, float bpZ) {

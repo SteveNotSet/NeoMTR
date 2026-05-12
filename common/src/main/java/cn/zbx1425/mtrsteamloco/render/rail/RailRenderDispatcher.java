@@ -25,7 +25,6 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.Mth;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.Vec3;
@@ -40,7 +39,6 @@ public class RailRenderDispatcher {
     private boolean isInstanced;
 
     private final HashSet<Rail> currentFrameRails = new HashSet<>();
-    private final HashSet<Long> renderedNodeModels = new HashSet<>();
 
     public static boolean isHoldingRailItem = false;
     public static boolean isHoldingBrush = false;
@@ -64,27 +62,35 @@ public class RailRenderDispatcher {
         BlockPos[] positions = findRailPositions(rail);
         if (positions == null) return;
 
-        BakedRail bakedRail = new BakedRail(rail, positions[0], positions[1], renderedNodeModels);
+        BakedRail bakedRail = new BakedRail(rail, positions[0], positions[1]);
         railRefMap.put(rail, bakedRail);
 
-        for (Map.Entry<String, HashMap<Long, ArrayList<Matrix4f>>> modelEntry : bakedRail.modelChunks.entrySet()) {
+        for (Map.Entry<String, HashMap<Long, ArrayList<Matrix4f>>> modelEntry : bakedRail.interiorModelsByChunks.entrySet()) {
             String modelKey = modelEntry.getKey();
-            HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(modelKey);
-            if (chunkMap == null) continue;
-            for (long chunkId : modelEntry.getValue().keySet()) {
-                if (chunkMap.containsKey(chunkId)) {
-                    chunkMap.get(chunkId).addRail(bakedRail, modelKey);
+            registerChunks(bakedRail, modelKey, modelEntry.getValue().keySet());
+        }
+        for (Map.Entry<String, HashMap<Long, ArrayList<BakedRail.TransformOnBoundary>>> modelEntry : bakedRail.boundaryModelsByChunks.entrySet()) {
+            String modelKey = modelEntry.getKey();
+            registerChunks(bakedRail, modelKey, modelEntry.getValue().keySet());
+        }
+    }
+
+    private void registerChunks(BakedRail bakedRail, String modelKey, java.util.Set<Long> chunkIds) {
+        HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(modelKey);
+        if (chunkMap == null) return;
+        for (long chunkId : chunkIds) {
+            if (chunkMap.containsKey(chunkId)) {
+                chunkMap.get(chunkId).addRail(bakedRail, modelKey);
+            } else {
+                RailChunkBase newChunk;
+                if (isInstanced) {
+                    newChunk = new InstancedRailChunk(chunkId, modelKey);
                 } else {
-                    RailChunkBase newChunk;
-                    if (isInstanced) {
-                        newChunk = new InstancedRailChunk(chunkId, modelKey);
-                    } else {
-                        newChunk = new MeshBuildingRailChunk(chunkId, modelKey);
-                    }
-                    newChunk.addRail(bakedRail, modelKey);
-                    chunkMap.put(chunkId, newChunk);
-                    railChunkList.add(newChunk);
+                    newChunk = new MeshBuildingRailChunk(chunkId, modelKey);
                 }
+                newChunk.addRail(bakedRail, modelKey);
+                chunkMap.put(chunkId, newChunk);
+                railChunkList.add(newChunk);
             }
         }
     }
@@ -93,17 +99,23 @@ public class RailRenderDispatcher {
         if (!railRefMap.containsKey(rail)) return;
         BakedRail bakedRail = railRefMap.remove(rail);
 
-        renderedNodeModels.removeAll(bakedRail.contributedNodeHashes);
-
-        for (Map.Entry<String, HashMap<Long, ArrayList<Matrix4f>>> modelEntry : bakedRail.modelChunks.entrySet()) {
+        for (Map.Entry<String, HashMap<Long, ArrayList<Matrix4f>>> modelEntry : bakedRail.interiorModelsByChunks.entrySet()) {
             String modelKey = modelEntry.getKey();
-            HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(modelKey);
-            if (chunkMap == null) continue;
-            for (long chunkId : modelEntry.getValue().keySet()) {
-                RailChunkBase chunk = chunkMap.get(chunkId);
-                if (chunk != null) {
-                    chunk.removeRail(bakedRail, modelKey);
-                }
+            unregisterChunks(bakedRail, modelKey, modelEntry.getValue().keySet());
+        }
+        for (Map.Entry<String, HashMap<Long, ArrayList<BakedRail.TransformOnBoundary>>> modelEntry : bakedRail.boundaryModelsByChunks.entrySet()) {
+            String modelKey = modelEntry.getKey();
+            unregisterChunks(bakedRail, modelKey, modelEntry.getValue().keySet());
+        }
+    }
+
+    private void unregisterChunks(BakedRail bakedRail, String modelKey, java.util.Set<Long> chunkIds) {
+        HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(modelKey);
+        if (chunkMap == null) return;
+        for (long chunkId : chunkIds) {
+            RailChunkBase chunk = chunkMap.get(chunkId);
+            if (chunk != null) {
+                chunk.removeRail(bakedRail, modelKey);
             }
         }
     }
@@ -117,7 +129,6 @@ public class RailRenderDispatcher {
     public void clearRail() {
         currentFrameRails.clear();
         railRefMap.clear();
-        renderedNodeModels.clear();
         for (HashMap<Long, RailChunkBase> chunkMap : railChunkMap.values()) {
             for (RailChunkBase chunk : chunkMap.values()) {
                 chunk.close();

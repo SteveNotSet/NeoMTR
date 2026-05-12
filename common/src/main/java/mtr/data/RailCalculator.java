@@ -6,6 +6,11 @@ import java.util.List;
 public final class RailCalculator {
 
 	public static final double PRECISION = 1e-3;
+	/**
+	 * Two parallel tangent lines closer than this (in blocks) are treated as collinear,
+	 * producing a straight rail. Covers 0.01° quantization error for rails up to ~1000 blocks.
+	 */
+	private static final double COLLINEAR_TOLERANCE = 0.1;
 
 	private RailCalculator() {
 	}
@@ -330,7 +335,7 @@ public final class RailCalculator {
 		final Line EE1 = new Line(E, E1);
 
 		if (SS1.parallel(EE1)) {
-			if (SS1.equals(EE1)) {
+			if (SS1.equals(EE1) || SS1.distance(E) < COLLINEAR_TOLERANCE) {
 				return new Group(new Segment(S, E).toSection(), new Section());
 			}
 

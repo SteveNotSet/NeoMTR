@@ -1,6 +1,5 @@
 package cn.zbx1425.mtrsteamloco.render.rail;
 
-import cn.zbx1425.mtrsteamloco.Main;
 import cn.zbx1425.mtrsteamloco.data.RailModelRegistry;
 import cn.zbx1425.mtrsteamloco.render.ByteBufferOutputStream;
 import cn.zbx1425.sowcer.batch.BatchManager;
@@ -28,7 +27,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Map;
 
 public class InstancedRailChunk extends RailChunkBase {
@@ -63,36 +62,34 @@ public class InstancedRailChunk extends RailChunkBase {
         super.rebuildBuffer(world);
         if (vertArrays == null) return;
 
-        int instanceCount = containingRails.values().stream().mapToInt(ArrayList::size).sum();
+        HashSet<Long> seenBoundaryKeys = new HashSet<>();
+        int instanceCount = 0;
+        for (RailChunkBase.RailTranformList transforms : containingRails.values()) {
+            instanceCount += transforms.interiorTransforms().size();
+            for (BakedRail.TransformOnBoundary bt : transforms.boundaryTransforms()) {
+                if (seenBoundaryKeys.add(bt.blockPosHash())) instanceCount++;
+            }
+        }
         float yMin = 256, yMax = -64;
 
         ByteBuffer byteBuf = OffHeapAllocator.allocate(instanceCount * RAIL_MAPPING.strideInstance);
         ByteBufferOutputStream byteArrayOutputStream = new ByteBufferOutputStream(byteBuf, false);
         LittleEndianDataOutputStream oStream = new LittleEndianDataOutputStream(byteArrayOutputStream);
 
-        for (Map.Entry<BakedRail, ArrayList<Matrix4f>> entry : containingRails.entrySet()) {
-            ArrayList<Matrix4f> railSpan = entry.getValue();
-            for (Matrix4f pieceMat : railSpan) {
-                try {
-                    oStream.writeInt(entry.getKey().color);
+        seenBoundaryKeys.clear();
+        for (Map.Entry<BakedRail, RailChunkBase.RailTranformList> entry : containingRails.entrySet()) {
+            int color = entry.getKey().color;
+            RailChunkBase.RailTranformList transforms = entry.getValue();
 
-                    final Vector3f lightPos = pieceMat.getTranslationPart();
-                    yMin = Math.min(yMin, lightPos.y());
-                    yMax = Math.max(yMax, lightPos.y());
-                    final BlockPos lightBlockPos = new BlockPos(Mth.floor(lightPos.x()), Mth.floor(lightPos.y() + 0.1), Mth.floor(lightPos.z()));
-                    final int light = LightTexture.pack(world.getBrightness(LightLayer.BLOCK, lightBlockPos), world.getBrightness(LightLayer.SKY, lightBlockPos));
-                    oStream.writeInt(light);
-
-                    byte[] lookAtBytes = new byte[4 * 16];
-                    ByteBuffer matByteBuf = ByteBuffer.wrap(lookAtBytes).order(ByteOrder.nativeOrder());
-                    FloatBuffer matFloatBuf = matByteBuf.asFloatBuffer();
-                    pieceMat.store(matFloatBuf);
-                    oStream.write(lookAtBytes);
-
-                    for (int k = 0; k < RAIL_MAPPING.paddingInstance; k++) oStream.writeByte(0);
-                } catch (IOException ignored) {
-
-                }
+            for (Matrix4f pieceMat : transforms.interiorTransforms()) {
+                yMin = writeInstance(oStream, pieceMat, color, world, yMin);
+                yMax = Math.max(yMax, pieceMat.getTranslationPart().y());
+            }
+            for (BakedRail.TransformOnBoundary bt : transforms.boundaryTransforms()) {
+                if (!seenBoundaryKeys.add(bt.blockPosHash())) continue;
+                Matrix4f pieceMat = bt.matrix();
+                yMin = writeInstance(oStream, pieceMat, color, world, yMin);
+                yMax = Math.max(yMax, pieceMat.getTranslationPart().y());
             }
         }
 
@@ -102,6 +99,29 @@ public class InstancedRailChunk extends RailChunkBase {
 
         if (yMin > yMax) yMin = yMax;
         setBoundingBox(yMin, yMax);
+    }
+
+    private float writeInstance(LittleEndianDataOutputStream oStream, Matrix4f pieceMat,
+                                int color, Level world, float yMin) {
+        try {
+            oStream.writeInt(color);
+
+            final Vector3f lightPos = pieceMat.getTranslationPart();
+            yMin = Math.min(yMin, lightPos.y());
+            final BlockPos lightBlockPos = new BlockPos(Mth.floor(lightPos.x()), Mth.floor(lightPos.y() + 0.1), Mth.floor(lightPos.z()));
+            final int light = LightTexture.pack(world.getBrightness(LightLayer.BLOCK, lightBlockPos), world.getBrightness(LightLayer.SKY, lightBlockPos));
+            oStream.writeInt(light);
+
+            byte[] lookAtBytes = new byte[4 * 16];
+            ByteBuffer matByteBuf = ByteBuffer.wrap(lookAtBytes).order(ByteOrder.nativeOrder());
+            FloatBuffer matFloatBuf = matByteBuf.asFloatBuffer();
+            pieceMat.store(matFloatBuf);
+            oStream.write(lookAtBytes);
+
+            for (int k = 0; k < RAIL_MAPPING.paddingInstance; k++) oStream.writeByte(0);
+        } catch (IOException ignored) {
+        }
+        return yMin;
     }
 
     @Override
