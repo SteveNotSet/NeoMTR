@@ -1,0 +1,10 @@
+{
+	"variants": {
+		"is_connected=false": {
+			"model": "mtr:block/rail_buffer"
+		},
+		"is_connected=true": {
+			"model": "mtr:block/rail_connection"
+		}
+	}
+}

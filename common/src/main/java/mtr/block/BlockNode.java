@@ -46,9 +46,17 @@ public class BlockNode extends BlockDirectionalMapper {
 	public static final BooleanProperty IS_CONNECTED = BooleanProperty.create("is_connected");
 
 	public BlockNode(TransportMode transportMode) {
+		this(transportMode, true);
+	}
+
+	protected BlockNode(TransportMode transportMode, boolean registerDiscreteAngleProperties) {
 		super(BlockBehaviour.Properties.of().strength(2).noOcclusion());
 		this.transportMode = transportMode;
-		registerDefaultState(defaultBlockState().setValue(FACING, false).setValue(IS_22_5, false).setValue(IS_45, false));
+		if (registerDiscreteAngleProperties) {
+			registerDefaultState(defaultBlockState().setValue(FACING, false).setValue(IS_22_5, false).setValue(IS_45, false).setValue(IS_CONNECTED, false));
+		} else {
+			registerDefaultState(defaultBlockState().setValue(IS_CONNECTED, false));
+		}
 	}
 
 	@Override
@@ -62,11 +70,15 @@ public class BlockNode extends BlockDirectionalMapper {
 		if (!world.isClientSide) {
 			final RailwayData railwayData = RailwayData.getInstance(world);
 			if (railwayData != null) {
-				railwayData.removeNode(player, pos, transportMode);
+				railwayData.removeNode(player, pos, getTransportModeForRemoval(world, pos));
 				PacketTrainDataGuiServer.removeNodeS2C(world, pos);
 			}
 		}
 		return super.playerWillDestroy(world, pos, state, player);
+	}
+
+	protected TransportMode getTransportModeForRemoval(Level world, BlockPos pos) {
+		return transportMode;
 	}
 
 	@Override

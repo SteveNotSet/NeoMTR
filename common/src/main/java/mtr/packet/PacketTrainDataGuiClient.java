@@ -104,6 +104,18 @@ public class PacketTrainDataGuiClient extends PacketTrainDataBase {
 		});
 	}
 
+	public static void openFreeNodeScreenS2C(Minecraft minecraftClient, FriendlyByteBuf packet) {
+		final BlockPos pos = packet.readBlockPos();
+		minecraftClient.execute(() -> {
+			if (minecraftClient.level != null && !(minecraftClient.screen instanceof FreeNodeScreen)) {
+				final BlockEntity entity = minecraftClient.level.getBlockEntity(pos);
+				if (entity instanceof mtr.block.BlockFreeNode.TileEntityFreeNode) {
+					UtilitiesClient.setScreen(minecraftClient, new FreeNodeScreen(pos));
+				}
+			}
+		});
+	}
+
 	public static void openLiftTrackFloorS2C(Minecraft minecraftClient, FriendlyByteBuf packet) {
 		final BlockPos pos = packet.readBlockPos();
 		minecraftClient.execute(() -> {
@@ -297,6 +309,15 @@ public class PacketTrainDataGuiClient extends PacketTrainDataBase {
 			packet.writeUtf(string);
 		}
 		RegistryClient.sendToServer(PACKET_UPDATE_TRAIN_SENSOR, packet);
+	}
+
+	public static void sendFreeNodeC2S(BlockPos pos, boolean undetermined, float angleDegrees, TransportMode transportMode) {
+		final FriendlyByteBuf packet = new FriendlyByteBuf(Unpooled.buffer());
+		packet.writeBlockPos(pos);
+		packet.writeBoolean(undetermined);
+		packet.writeFloat(angleDegrees);
+		packet.writeUtf(transportMode.toString());
+		RegistryClient.sendToServer(PACKET_UPDATE_FREE_NODE, packet);
 	}
 
 	public static void sendLiftTrackFloorC2S(BlockPos pos, String floorNumber, String floorDescription, boolean shouldDing, boolean disableCarCall) {

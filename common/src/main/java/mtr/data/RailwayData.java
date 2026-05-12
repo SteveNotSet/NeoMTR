@@ -469,6 +469,17 @@ public class RailwayData extends PersistentStateMapper implements IPacket {
 		return containsRail(rails, pos1, pos2);
 	}
 
+	public Set<BlockPos> getRailConnectionsFrom(BlockPos pos) {
+		if (!rails.containsKey(pos)) {
+			return Collections.emptySet();
+		}
+		return new HashSet<>(rails.get(pos).keySet());
+	}
+
+	public Rail getRail(BlockPos posStart, BlockPos posEnd) {
+		return DataCache.tryGet(rails, posStart, posEnd);
+	}
+
 	public long removeSignal(Player player, DyeColor color, BlockPos posStart, BlockPos posEnd) {
 		railwayDataLoggingModule.addEvent((ServerPlayer) player, SignalBlocks.SignalBlock.class, Collections.singletonList(String.format("color:%s", color)), new ArrayList<>(), posStart, posEnd);
 		return signalBlocks.remove(0, color, PathData.getRailProduct(posStart, posEnd));

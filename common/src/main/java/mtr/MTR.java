@@ -174,6 +174,7 @@ public class MTR implements IPacket {
 			registerItem.accept("boat_node", Items.BOAT_NODE);
 
 			registerBlockItem.accept("rail", Blocks.RAIL_NODE, CreativeModeTabs.CORE);
+			registerBlockItem.accept("free_node", Blocks.FREE_NODE, CreativeModeTabs.CORE);
 			registerBlock.accept("boat_node", Blocks.BOAT_NODE);
 			registerBlockItem.accept("cable_car_node_lower", Blocks.CABLE_CAR_NODE_LOWER, CreativeModeTabs.CORE);
 			registerBlockItem.accept("cable_car_node_upper", Blocks.CABLE_CAR_NODE_UPPER, CreativeModeTabs.CORE);
@@ -355,6 +356,7 @@ public class MTR implements IPacket {
 			registerBlockEntityType.accept("arrival_projector_1_medium", BlockEntityTypes.ARRIVAL_PROJECTOR_1_MEDIUM_TILE_ENTITY);
 			registerBlockEntityType.accept("arrival_projector_1_large", BlockEntityTypes.ARRIVAL_PROJECTOR_1_LARGE_TILE_ENTITY);
 			registerBlockEntityType.accept("boat_node", BlockEntityTypes.BOAT_NODE_TILE_ENTITY);
+			registerBlockEntityType.accept("free_node", BlockEntityTypes.FREE_NODE_TILE_ENTITY);
 			registerBlockEntityType.accept("clock", BlockEntityTypes.CLOCK_TILE_ENTITY);
 			registerBlockEntityType.accept("psd_door_1", BlockEntityTypes.PSD_DOOR_1_TILE_ENTITY);
 			registerBlockEntityType.accept("psd_door_2", BlockEntityTypes.PSD_DOOR_2_TILE_ENTITY);
@@ -435,6 +437,7 @@ public class MTR implements IPacket {
 		Registry.registerNetworkReceiver(PACKET_DELETE_ROUTE, (minecraftServer, player, packet) -> PacketTrainDataGuiServer.receiveUpdateOrDeleteC2S(minecraftServer, player, packet, PACKET_DELETE_ROUTE, railwayData -> railwayData.routes, railwayData -> railwayData.dataCache.routeIdMap, null, true));
 		Registry.registerNetworkReceiver(PACKET_DELETE_DEPOT, (minecraftServer, player, packet) -> PacketTrainDataGuiServer.receiveUpdateOrDeleteC2S(minecraftServer, player, packet, PACKET_DELETE_DEPOT, railwayData -> railwayData.depots, railwayData -> railwayData.dataCache.depotIdMap, null, true));
 		Registry.registerNetworkReceiver(PACKET_UPDATE_TRAIN_SENSOR, PacketTrainDataGuiServer::receiveTrainSensorC2S);
+		Registry.registerNetworkReceiver(PACKET_UPDATE_FREE_NODE, PacketTrainDataGuiServer::receiveFreeNodeC2S);
 		Registry.registerNetworkReceiver(PACKET_REMOVE_RAIL_ACTION, PacketTrainDataGuiServer::receiveRemoveRailAction);
 		Registry.registerNetworkReceiver(PACKET_UPDATE_TRAIN_PASSENGER_POSITION, PacketTrainDataGuiServer::receiveUpdateTrainPassengerPosition);
 		Registry.registerNetworkReceiver(PACKET_UPDATE_LIFT_PASSENGER_POSITION, PacketTrainDataGuiServer::receiveUpdateLiftPassengerPosition);
@@ -450,6 +453,7 @@ public class MTR implements IPacket {
 		Registry.registerNetworkPacket(PACKET_OPEN_RAILWAY_SIGN_SCREEN);
 		Registry.registerNetworkPacket(PACKET_OPEN_TICKET_MACHINE_SCREEN);
 		Registry.registerNetworkPacket(PACKET_OPEN_TRAIN_SENSOR_SCREEN);
+		Registry.registerNetworkPacket(PACKET_OPEN_FREE_NODE_SCREEN);
 		Registry.registerNetworkPacket(PACKET_OPEN_RESOURCE_PACK_CREATOR_SCREEN);
 		Registry.registerNetworkPacket(PACKET_ANNOUNCE);
 		Registry.registerNetworkPacket(PACKET_GENERATE_PATH);

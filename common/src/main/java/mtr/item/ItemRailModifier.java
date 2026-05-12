@@ -63,10 +63,10 @@ public class ItemRailModifier extends ItemNodeModifierBase {
 						final int differenceX = posEnd.getX() - posStart.getX();
 						final int differenceZ = posEnd.getZ() - posStart.getZ();
 						isValidContinuousMovement = !railType.hasSavedRail && facingStart.isParallel(facingEnd)
-								&& ((facingStart == RailAngle.N || facingStart == RailAngle.S) && differenceX == 0
-								|| (facingStart == RailAngle.E || facingStart == RailAngle.W) && differenceZ == 0
-								|| (facingStart == RailAngle.NE || facingStart == RailAngle.SW) && differenceX == -differenceZ
-								|| (facingStart == RailAngle.SE || facingStart == RailAngle.NW) && differenceX == differenceZ);
+								&& ((facingStart.equals(RailAngle.N) || facingStart.equals(RailAngle.S)) && differenceX == 0
+								|| (facingStart.equals(RailAngle.E) || facingStart.equals(RailAngle.W)) && differenceZ == 0
+								|| (facingStart.equals(RailAngle.NE) || facingStart.equals(RailAngle.SW)) && differenceX == -differenceZ
+								|| (facingStart.equals(RailAngle.SE) || facingStart.equals(RailAngle.NW)) && differenceX == differenceZ);
 						newRailType = RailType.CABLE_CAR;
 					}
 				} else {
@@ -85,6 +85,7 @@ public class ItemRailModifier extends ItemNodeModifierBase {
 			final boolean isValid = rail1.isValid() && rail2.isValid();
 
 			if (goodRadius && isValid && isValidContinuousMovement) {
+				ItemNodeModifierBase.applyQueuedFreeNodeAngles(world);
 				railwayData.addRail(player, transportMode, posStart, posEnd, rail1, false);
 				final long newId = railwayData.addRail(player, transportMode, posEnd, posStart, rail2, true);
 				world.setBlockAndUpdate(posStart, stateStart.setValue(BlockNode.IS_CONNECTED, true));

@@ -21,7 +21,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.scores.Score;
 import net.minecraft.world.scores.ScoreAccess;
 
@@ -63,6 +65,12 @@ public class PacketTrainDataGuiServer extends PacketTrainDataBase {
 		final FriendlyByteBuf packet = new FriendlyByteBuf(Unpooled.buffer());
 		packet.writeBlockPos(blockPos);
 		Registry.sendToPlayer(player, PACKET_OPEN_TRAIN_SENSOR_SCREEN, packet);
+	}
+
+	public static void openFreeNodeScreenS2C(ServerPlayer player, BlockPos blockPos) {
+		final FriendlyByteBuf packet = new FriendlyByteBuf(Unpooled.buffer());
+		packet.writeBlockPos(blockPos);
+		Registry.sendToPlayer(player, PACKET_OPEN_FREE_NODE_SCREEN, packet);
 	}
 
 	public static void openLiftTrackFloorScreenS2C(ServerPlayer player, BlockPos blockPos) {
@@ -284,6 +292,129 @@ public class PacketTrainDataGuiServer extends PacketTrainDataBase {
 				setTileEntityDataAndWriteUpdate(player, entity2 -> entity2.setData(filterIds, stoppedOnly, movingOnly, number, strings), (BlockTrainSensorBase.TileEntityTrainSensorBase) entity);
 			}
 		});
+	}
+
+	public static void receiveFreeNodeC2S(MinecraftServer minecraftServer, ServerPlayer player, FriendlyByteBuf packet) {
+		final BlockPos pos = packet.readBlockPos();
+		final boolean undetermined = packet.readBoolean();
+		final float angleDegrees = packet.readFloat();
+		final TransportMode newTransportMode = EnumHelper.valueOf(TransportMode.TRAIN, packet.readUtf(SerializedDataBase.PACKET_STRING_READ_LENGTH));
+		minecraftServer.execute(() -> {
+			final Level level = player.level();
+			final RailwayData railwayData = RailwayData.getInstance(level);
+			final BlockEntity entity = level.getBlockEntity(pos);
+			if (railwayData == null || !(entity instanceof BlockFreeNode.TileEntityFreeNode)) {
+				return;
+			}
+			final BlockFreeNode.TileEntityFreeNode tileEntityFreeNode = (BlockFreeNode.TileEntityFreeNode) entity;
+
+			if (!undetermined && (!Float.isFinite(angleDegrees) || Float.isNaN(angleDegrees))) {
+				player.displayClientMessage(mtr.mappings.Text.translatable("gui.mtr.free_node_invalid_angle"), true);
+				return;
+			}
+			final float newRaw = undetermined ? Float.NaN : angleDegrees;
+
+			final Set<BlockPos> connectionSet = railwayData.getRailConnectionsFrom(pos);
+			if (Float.isNaN(newRaw) && !connectionSet.isEmpty()) {
+				player.displayClientMessage(mtr.mappings.Text.translatable("gui.mtr.free_node_undetermined_while_connected"), true);
+				return;
+			}
+
+			for (final BlockPos other : connectionSet) {
+				final Rail rail = railwayData.getRail(pos, other);
+				if (rail != null && rail.railType.hasSavedRail) {
+					player.displayClientMessage(mtr.mappings.Text.translatable("gui.mtr.platform_or_siding_exists"), true);
+					return;
+				}
+			}
+
+			final List<BlockPos> others = new ArrayList<>(connectionSet);
+			final List<Rail> newForwards = new ArrayList<>();
+			final List<Rail> newBackwards = new ArrayList<>();
+
+			for (final BlockPos other : others) {
+				final Rail oldFwd = railwayData.getRail(pos, other);
+				final Rail oldBack = railwayData.getRail(other, pos);
+				if (oldFwd == null || oldBack == null) {
+					return;
+				}
+				final BlockState stateOther = level.getBlockState(other);
+				final float rawOther = readRawNodeAngleDegrees(level, other, stateOther);
+				if (Float.isNaN(rawOther)) {
+					player.displayClientMessage(mtr.mappings.Text.translatable("gui.mtr.free_node_neighbor_undetermined"), true);
+					return;
+				}
+				final RailAngle facingPos = RailNodeGeometry.railFacingAtStartTowardEnd(newRaw, pos, other);
+				final RailAngle facingOther = RailNodeGeometry.railFacingAtEndTowardStart(rawOther, pos, other);
+				final Rail nf = new Rail(pos, facingPos, other, facingOther, oldFwd.railType, oldFwd.transportMode);
+				final Rail nb = new Rail(other, facingOther, pos, facingPos, oldBack.railType, oldBack.transportMode);
+				if (!freeNodeContinuousMovementAllowed(level, pos, other, nf)) {
+					player.displayClientMessage(mtr.mappings.Text.translatable("gui.mtr.cable_car_invalid_orientation"), true);
+					return;
+				}
+				final boolean okRails = nf.goodRadius() && nb.goodRadius() && nf.isValid() && nb.isValid();
+				if (!okRails) {
+					final boolean badRadius = !nf.goodRadius() || !nb.goodRadius();
+					player.displayClientMessage(mtr.mappings.Text.translatable(badRadius ? "gui.mtr.radius_too_small" : "gui.mtr.invalid_orientation"), true);
+					return;
+				}
+				newForwards.add(nf);
+				newBackwards.add(nb);
+			}
+
+			for (final BlockPos other : new ArrayList<>(others)) {
+				railwayData.removeRailConnection(player, pos, other);
+				PacketTrainDataGuiServer.removeRailConnectionS2C(level, pos, other);
+			}
+
+			tileEntityFreeNode.setAngleAndMode(newRaw, newTransportMode);
+
+			for (int i = 0; i < newForwards.size(); i++) {
+				final BlockPos other = others.get(i);
+				final Rail nf = newForwards.get(i);
+				final Rail nb = newBackwards.get(i);
+				railwayData.addRail(player, nf.transportMode, pos, other, nf, false);
+				final long newId = railwayData.addRail(player, nb.transportMode, other, pos, nb, true);
+				PacketTrainDataGuiServer.createRailS2C(level, nf.transportMode, pos, other, nf, nb, newId);
+				level.setBlockAndUpdate(pos, level.getBlockState(pos).setValue(BlockNode.IS_CONNECTED, true));
+				level.setBlockAndUpdate(other, level.getBlockState(other).setValue(BlockNode.IS_CONNECTED, true));
+			}
+		});
+	}
+
+	private static float readRawNodeAngleDegrees(Level level, BlockPos nodePos, BlockState state) {
+		if (state.getBlock() instanceof BlockFreeNode) {
+			return BlockFreeNode.getRawAngleDegrees(level, nodePos);
+		}
+		return BlockNode.getAngle(state);
+	}
+
+	private static boolean freeNodeContinuousMovementAllowed(Level level, BlockPos posStart, BlockPos posEnd, Rail newRailFwd) {
+		final TransportMode transportMode = newRailFwd.transportMode;
+		final RailType railType = newRailFwd.railType;
+		if (!transportMode.continuousMovement) {
+			return true;
+		}
+		final Block blockStart = level.getBlockState(posStart).getBlock();
+		final Block blockEnd = level.getBlockState(posEnd).getBlock();
+
+		if (blockStart instanceof BlockNode.BlockContinuousMovementNode && blockEnd instanceof BlockNode.BlockContinuousMovementNode) {
+			if (((BlockNode.BlockContinuousMovementNode) blockStart).isStation && ((BlockNode.BlockContinuousMovementNode) blockEnd).isStation) {
+				return true;
+			} else {
+				final RailAngle facingStart = newRailFwd.facingStart;
+				final RailAngle facingEnd = newRailFwd.facingEnd;
+				final int differenceX = posEnd.getX() - posStart.getX();
+				final int differenceZ = posEnd.getZ() - posStart.getZ();
+				return !railType.hasSavedRail && facingStart.isParallel(facingEnd)
+						&& ((facingStart.equals(RailAngle.N) || facingStart.equals(RailAngle.S)) && differenceX == 0
+						|| (facingStart.equals(RailAngle.E) || facingStart.equals(RailAngle.W)) && differenceZ == 0
+						|| (facingStart.equals(RailAngle.NE) || facingStart.equals(RailAngle.SW)) && differenceX == -differenceZ
+						|| (facingStart.equals(RailAngle.SE) || facingStart.equals(RailAngle.NW)) && differenceX == differenceZ);
+			}
+		} else {
+			return false;
+		}
 	}
 
 	public static void receiveLiftTrackFloorC2S(MinecraftServer minecraftServer, ServerPlayer player, FriendlyByteBuf packet) {

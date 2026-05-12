@@ -158,7 +158,7 @@ public class PathFinder {
 				otherOptions.addAll(runways);
 			} else {
 				newConnections.forEach((connectedPos, rail) -> {
-					if (canTurnBack || rail.railType != RailType.NONE && rail.facingStart != newDirection.getOpposite() && path.stream().noneMatch(pathPart -> pathPart.isSame(newPos, newDirection))) {
+					if (canTurnBack || rail.railType != RailType.NONE && !RailAngle.nearlySameDirection(rail.facingStart, newDirection.getOpposite()) && path.stream().noneMatch(pathPart -> pathPart.isSame(newPos, newDirection))) {
 						otherOptions.add(connectedPos);
 						if (canTurnBack) {
 							turnBacks.add(newPos);
@@ -180,8 +180,8 @@ public class PathFinder {
 		RailAngle tempAngle = startAngle;
 		BlockPos tempPos = startPos;
 
-		for (int i = 0; i < RailAngle.values().length; i++) {
-			if (tempAngle == expectedAngle) {
+		for (int i = 0; i < RailAngle.QUADRANT_COUNT; i++) {
+			if (RailAngle.nearlySameDirection(tempAngle, expectedAngle)) {
 				break;
 			}
 
@@ -215,7 +215,7 @@ public class PathFinder {
 		}
 
 		private boolean isSame(BlockPos newPos, RailAngle newDirection) {
-			return newPos.equals(pos) && newDirection == direction;
+			return newPos.equals(pos) && RailAngle.nearlySameDirection(newDirection, direction);
 		}
 	}
 }
