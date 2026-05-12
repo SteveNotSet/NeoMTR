@@ -1,8 +1,8 @@
 package cn.zbx1425.mtrsteamloco.mixin;
 
 import cn.zbx1425.mtrsteamloco.gui.BrushEditRailScreen;
+import cn.zbx1425.mtrsteamloco.gui.PlacementEditorScreen;
 import cn.zbx1425.mtrsteamloco.network.PacketScreen;
-import cn.zbx1425.mtrsteamloco.render.RailPicker;
 import mtr.item.ItemWithCreativeTabBase;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
@@ -41,6 +41,30 @@ public abstract class ItemWithCreativeTabBaseMixin extends Item {
                         BrushEditRailScreen.acquirePickInfoWhenUse();
                         CompoundTag railBrushProp = context.getPlayer().getMainHandItem().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
                         BrushEditRailScreen.applyBrushToPickedRail(railBrushProp, true);
+                    } else {
+                        return super.useOn(context);
+                    }
+                }
+                return InteractionResult.SUCCESS;
+            } else {
+                return super.useOn(context);
+            }
+        } else if (this == mtr.Items.PLACEMENT_TOOL.get()) {
+            Level level = context.getLevel();
+            BlockState blockState = level.getBlockState(context.getClickedPos());
+            if (blockState.getBlock() instanceof mtr.block.BlockNode) {
+                if (context.isSecondaryUseActive()) {
+                    if (level.isClientSide) {
+                        PlacementEditorScreen.acquirePickInfoWhenUse();
+                        return super.useOn(context);
+                    } else {
+                        PacketScreen.sendScreenBlockS2C((ServerPlayer) context.getPlayer(), "placement_editor", BlockPos.ZERO);
+                    }
+                } else {
+                    if (level.isClientSide) {
+                        PlacementEditorScreen.acquirePickInfoWhenUse();
+                        CompoundTag toolTag = context.getPlayer().getMainHandItem().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+                        PlacementEditorScreen.applyPlacementTemplate(toolTag, true);
                     } else {
                         return super.useOn(context);
                     }

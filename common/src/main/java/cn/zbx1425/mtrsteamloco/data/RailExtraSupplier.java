@@ -3,6 +3,8 @@ package cn.zbx1425.mtrsteamloco.data;
 import mtr.data.Rail;
 import net.minecraft.util.Mth;
 
+import java.util.List;
+
 public interface RailExtraSupplier {
 
     // "": default, "null": hidden
@@ -19,6 +21,10 @@ public interface RailExtraSupplier {
     void setVerticalCurveRadius(float value);
 
     int getHeight();
+
+    List<RailModelPlacement> getModelPlacements();
+
+    void setModelPlacements(List<RailModelPlacement> placements);
 
     static float getVTheta(Rail rail, double verticalCurveRadius) {
         double H = Math.abs(((RailExtraSupplier)rail).getHeight());

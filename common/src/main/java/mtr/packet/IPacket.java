@@ -68,5 +68,7 @@ public interface IPacket {
 	ResourceLocation PACKET_UPDATE_FREE_NODE = MTR.id("packet_update_free_node");
 	ResourceLocation PACKET_UPDATE_LIFT_TRACK_FLOOR = MTR.id("packet_update_lift_track_floor");
 
+	ResourceLocation PACKET_PROPAGATE_PLACEMENT = MTR.id("packet_propagate_placement");
+
 	int MAX_PACKET_BYTES = 1048576;
 }

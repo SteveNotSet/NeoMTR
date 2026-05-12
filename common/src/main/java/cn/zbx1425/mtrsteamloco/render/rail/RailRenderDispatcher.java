@@ -40,43 +40,71 @@ public class RailRenderDispatcher {
     private boolean isInstanced;
 
     private final HashSet<Rail> currentFrameRails = new HashSet<>();
+    private final HashSet<Long> renderedNodeModels = new HashSet<>();
 
     public static boolean isHoldingRailItem = false;
     public static boolean isHoldingBrush = false;
+    public static boolean isHoldingPlacementTool = false;
     public static boolean isHoldingRailItemOrBrush = false;
     public static boolean isPreviewingModel = false;
 
+    private BlockPos[] findRailPositions(Rail rail) {
+        for (Map.Entry<BlockPos, Map<BlockPos, Rail>> outer : ClientData.RAILS.entrySet()) {
+            for (Map.Entry<BlockPos, Rail> inner : outer.getValue().entrySet()) {
+                if (inner.getValue() == rail) {
+                    return new BlockPos[]{outer.getKey(), inner.getKey()};
+                }
+            }
+        }
+        return null;
+    }
+
     private void addRail(Rail rail) {
         if (railRefMap.containsKey(rail)) return;
-        BakedRail bakedRail = new BakedRail(rail);
+        BlockPos[] positions = findRailPositions(rail);
+        if (positions == null) return;
+
+        BakedRail bakedRail = new BakedRail(rail, positions[0], positions[1], renderedNodeModels);
         railRefMap.put(rail, bakedRail);
-        HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(bakedRail.modelKey);
-        if (chunkMap == null) return;
-        for (long chunkId : bakedRail.coveredChunks.keySet()) {
-            if (chunkMap.containsKey(chunkId)) {
-                chunkMap.get(chunkId).addRail(bakedRail);
-            } else {
-                RailChunkBase newChunk;
-                if (isInstanced) {
-                    newChunk = new InstancedRailChunk(chunkId, bakedRail.modelKey);
+
+        for (Map.Entry<String, HashMap<Long, ArrayList<Matrix4f>>> modelEntry : bakedRail.modelChunks.entrySet()) {
+            String modelKey = modelEntry.getKey();
+            HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(modelKey);
+            if (chunkMap == null) continue;
+            for (long chunkId : modelEntry.getValue().keySet()) {
+                if (chunkMap.containsKey(chunkId)) {
+                    chunkMap.get(chunkId).addRail(bakedRail, modelKey);
                 } else {
-                    newChunk = new MeshBuildingRailChunk(chunkId, bakedRail.modelKey);
+                    RailChunkBase newChunk;
+                    if (isInstanced) {
+                        newChunk = new InstancedRailChunk(chunkId, modelKey);
+                    } else {
+                        newChunk = new MeshBuildingRailChunk(chunkId, modelKey);
+                    }
+                    newChunk.addRail(bakedRail, modelKey);
+                    chunkMap.put(chunkId, newChunk);
+                    railChunkList.add(newChunk);
                 }
-                newChunk.addRail(bakedRail);
-                chunkMap.put(chunkId, newChunk);
-                railChunkList.add(newChunk);
             }
         }
     }
 
     private void removeRail(Rail rail) {
         if (!railRefMap.containsKey(rail)) return;
-        BakedRail bakedRail = railRefMap.get(rail);
-        railRefMap.remove(rail);
-        HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(bakedRail.modelKey);
-        if (chunkMap == null) return;
-        for (long chunkId : bakedRail.coveredChunks.keySet()) {
-            chunkMap.get(chunkId).removeRail(bakedRail);
+        BakedRail bakedRail = railRefMap.remove(rail);
+
+        renderedNodeModels.removeAll(bakedRail.contributedNodeHashes);
+
+        for (Map.Entry<String, HashMap<Long, ArrayList<Matrix4f>>> modelEntry : bakedRail.modelChunks.entrySet()) {
+            String modelKey = modelEntry.getKey();
+            HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(modelKey);
+            if (chunkMap == null) continue;
+            for (long chunkId : modelEntry.getValue().keySet()) {
+                RailChunkBase chunk = chunkMap.get(chunkId);
+                if (chunk != null) {
+                    chunk.removeRail(bakedRail, modelKey);
+                }
+            }
         }
     }
 
@@ -89,6 +117,7 @@ public class RailRenderDispatcher {
     public void clearRail() {
         currentFrameRails.clear();
         railRefMap.clear();
+        renderedNodeModels.clear();
         for (HashMap<Long, RailChunkBase> chunkMap : railChunkMap.values()) {
             for (RailChunkBase chunk : chunkMap.values()) {
                 chunk.close();
@@ -119,10 +148,12 @@ public class RailRenderDispatcher {
         if (!isPreviewingModel) {
             isHoldingRailItem = RenderTrains.isHoldingRailRelated(Minecraft.getInstance().player);
             isHoldingBrush = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(mtr.Items.BRUSH.get()));
-            isHoldingRailItemOrBrush = isHoldingRailItem || isHoldingBrush;
+            isHoldingPlacementTool = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(mtr.Items.PLACEMENT_TOOL.get()));
+            isHoldingRailItemOrBrush = isHoldingRailItem || isHoldingBrush || isHoldingPlacementTool;
         } else {
             isHoldingRailItem = false;
             isHoldingBrush = false;
+            isHoldingPlacementTool = false;
             isHoldingRailItemOrBrush = false;
         }
     }
@@ -207,7 +238,10 @@ public class RailRenderDispatcher {
 
     // "null": hidden, "": use MTR's default pipeline
     public static String getModelKeyForRender(Rail rail) {
-        String customModelKey = ((RailExtraSupplier)rail).getModelKey();
+        return getModelKeyForRender(rail, ((RailExtraSupplier) rail).getModelKey());
+    }
+
+    public static String getModelKeyForRender(Rail rail, String customModelKey) {
         if (customModelKey.equals("") || !RailModelRegistry.elements.containsKey(customModelKey)) {
             if (rail.transportMode == TransportMode.TRAIN) {
                 if (rail.railType == RailType.SIDING) {

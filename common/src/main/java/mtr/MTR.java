@@ -45,6 +45,7 @@ public class MTR implements IPacket {
 			BiConsumer<String, SoundEvent> registerSoundEvent
 	) {
 		registerItem.accept("brush", Items.BRUSH);
+		registerItem.accept("placement_tool", Items.PLACEMENT_TOOL);
 		registerItem.accept("escalator", Items.ESCALATOR);
 		registerItem.accept("lift_buttons_link_connector", Items.LIFT_BUTTONS_LINK_CONNECTOR);
 		registerItem.accept("lift_buttons_link_remover", Items.LIFT_BUTTONS_LINK_REMOVER);
@@ -444,6 +445,7 @@ public class MTR implements IPacket {
 		Registry.registerNetworkReceiver(PACKET_UPDATE_ENTITY_SEAT_POSITION, PacketTrainDataGuiServer::receiveUpdateEntitySeatPassengerPosition);
 		Registry.registerNetworkReceiver(PACKET_DRIVE_TRAIN, PacketTrainDataGuiServer::receiveDriveTrainC2S);
 		Registry.registerNetworkReceiver(PACKET_PRESS_LIFT_BUTTON, PacketTrainDataGuiServer::receivePressLiftButtonC2S);
+		Registry.registerNetworkReceiver(PACKET_PROPAGATE_PLACEMENT, PacketTrainDataGuiServer::receivePropagateC2S);
 
 		Registry.registerNetworkPacket(PACKET_VERSION_CHECK);
 		Registry.registerNetworkPacket(PACKET_CHUNK_S2C);
@@ -487,6 +489,7 @@ public class MTR implements IPacket {
 		Registry.registerNetworkPacket(PACKET_UPDATE_SCHEDULE);
 		Registry.registerNetworkPacket(PACKET_OPEN_LIFT_TRACK_FLOOR_SCREEN);
 		Registry.registerNetworkPacket(PACKET_OPEN_LIFT_CUSTOMIZATION_SCREEN);
+		Registry.registerNetworkPacket(PACKET_PROPAGATE_PLACEMENT);
 
 		Registry.registerTickEvent(minecraftServer -> {
 			minecraftServer.getAllLevels().forEach(serverWorld -> {

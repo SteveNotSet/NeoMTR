@@ -609,6 +609,38 @@ public class PacketTrainDataGuiServer extends PacketTrainDataBase {
 		}
 	}
 
+	public static void receivePropagateC2S(MinecraftServer minecraftServer, ServerPlayer player, FriendlyByteBuf packet) {
+		final byte operation = packet.readByte();
+
+		if (operation == 2) {
+			minecraftServer.execute(() -> {
+				final RailwayData railwayData = RailwayData.getInstance(player.level());
+				if (railwayData != null) {
+					cn.zbx1425.mtrsteamloco.data.RailModelPlacement.undoPropagate(railwayData, player);
+				}
+			});
+			return;
+		}
+
+		final BlockPos railStart = packet.readBlockPos();
+		final BlockPos railEnd = packet.readBlockPos();
+		final int placementIndex = packet.readVarInt();
+		final String modelKey = packet.readUtf();
+		final float interval = packet.readFloat();
+		final boolean reversed = packet.readBoolean();
+		final float offset = packet.readFloat();
+
+		minecraftServer.execute(() -> {
+			final Level world = player.level();
+			final RailwayData railwayData = RailwayData.getInstance(world);
+			if (railwayData == null) return;
+
+			cn.zbx1425.mtrsteamloco.data.RailModelPlacement
+					.propagate(railwayData, player, railStart, railEnd,
+							placementIndex, modelKey, interval, reversed, offset);
+		});
+	}
+
 	private static <T extends SerializedDataBase> void serializeData(FriendlyByteBuf packet, Collection<T> objects) {
 		packet.writeInt(objects.size());
 		objects.forEach(object -> object.writePacket(packet));

@@ -34,7 +34,7 @@ public class WidgetScrollList extends AbstractScrollWidget {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        for (AbstractWidget widget : children) {
+        for (AbstractWidget widget : new ArrayList<>(children)) {
             widget.mouseClicked(mouseX - this.getX(), (int) (mouseY + getOffset()) - this.getY(), button);
         }
         return super.mouseClicked(mouseX, mouseY, button);

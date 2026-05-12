@@ -68,12 +68,18 @@ public abstract class RailChunkBase implements Closeable {
         return cameraDistManhattanXZ;
     }
 
-    public void addRail(BakedRail rail) {
-        containingRails.put(rail, rail.coveredChunks.get(chunkId));
-        isDirty = true;
+    public void addRail(BakedRail rail, String modelKey) {
+        HashMap<Long, ArrayList<Matrix4f>> chunks = rail.modelChunks.get(modelKey);
+        if (chunks != null) {
+            ArrayList<Matrix4f> matrices = chunks.get(chunkId);
+            if (matrices != null) {
+                containingRails.put(rail, matrices);
+                isDirty = true;
+            }
+        }
     }
 
-    public void removeRail(BakedRail rail) {
+    public void removeRail(BakedRail rail, String modelKey) {
         containingRails.remove(rail);
         isDirty = true;
     }
