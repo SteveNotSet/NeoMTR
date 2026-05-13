@@ -67,7 +67,8 @@ public class InstancedRailChunk extends RailChunkBase {
         for (RailChunkBase.RailTranformList transforms : containingRails.values()) {
             instanceCount += transforms.interiorTransforms().size();
             for (BakedRail.TransformOnBoundary bt : transforms.boundaryTransforms()) {
-                if (seenBoundaryKeys.add(bt.blockPosHash())) instanceCount++;
+                long dedupKey = bt.blockPosHash() ^ (bt.reversed() ? Long.MIN_VALUE : 0);
+                if (seenBoundaryKeys.add(dedupKey)) instanceCount++;
             }
         }
         float yMin = 256, yMax = -64;
@@ -86,7 +87,8 @@ public class InstancedRailChunk extends RailChunkBase {
                 yMax = Math.max(yMax, pieceMat.getTranslationPart().y());
             }
             for (BakedRail.TransformOnBoundary bt : transforms.boundaryTransforms()) {
-                if (!seenBoundaryKeys.add(bt.blockPosHash())) continue;
+                long dedupKey = bt.blockPosHash() ^ (bt.reversed() ? Long.MIN_VALUE : 0);
+                if (!seenBoundaryKeys.add(dedupKey)) continue;
                 Matrix4f pieceMat = bt.matrix();
                 yMin = writeInstance(oStream, pieceMat, color, world, yMin);
                 yMax = Math.max(yMax, pieceMat.getTranslationPart().y());

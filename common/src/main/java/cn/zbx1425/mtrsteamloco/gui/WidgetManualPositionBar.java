@@ -26,14 +26,25 @@ public class WidgetManualPositionBar extends AbstractWidget {
     private final Consumer<List<Float>> onChange;
     private Runnable onSelectionChange;
 
+    private float viewCenter = 50f;
+    private int zoomIndex = 0;
+    private static final float[] ZOOM_LEVELS = {1, 2, 4, 8, 16};
+
     private static final int HANDLE_HALF_W = 3;
-    private static final int BAR_HEIGHT = 12;
-    private static final int HANDLE_HEIGHT = 18;
+    private static final int OVERVIEW_H = 12;
+    private static final int OV_TICK_AREA = 12;
+    private static final int GAP = 4;
+    private static final int DETAIL_H = 22;
+    private static final int DT_TICK_AREA = 12;
     private static final int MARGIN = 10;
+    private static final int TOTAL_H = OVERVIEW_H + OV_TICK_AREA + GAP + DETAIL_H + DT_TICK_AREA;
+    private static final int TICK_LEN = 4;
     private static final float QUANTIZE_STEP = 0.001f;
 
+    private boolean isDraggingOverview = false;
+
     public WidgetManualPositionBar(int x, int y, int width, Consumer<List<Float>> onChange) {
-        super(x, y, width, HANDLE_HEIGHT + 14, Component.empty());
+        super(x, y, width, TOTAL_H, Component.empty());
         this.onChange = onChange;
     }
 
@@ -43,6 +54,8 @@ public class WidgetManualPositionBar extends AbstractWidget {
 
     public void setRailLength(float railLength) {
         this.railLength = Math.max(0.1f, railLength);
+        this.viewCenter = this.railLength / 2;
+        clampViewport();
     }
 
     public void setPositions(List<Float> newPositions) {
@@ -63,10 +76,7 @@ public class WidgetManualPositionBar extends AbstractWidget {
     }
 
     public float getSelectedPosition() {
-        if (selectedIndex >= 0 && selectedIndex < positions.size()) {
-            return positions.get(selectedIndex);
-        }
-        return -1;
+        return (selectedIndex >= 0 && selectedIndex < positions.size()) ? positions.get(selectedIndex) : -1;
     }
 
     public void setPositionAt(int index, float value) {
@@ -76,112 +86,257 @@ public class WidgetManualPositionBar extends AbstractWidget {
         }
     }
 
+    public void setZoomIndex(int idx) {
+        this.zoomIndex = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, idx));
+        clampViewport();
+    }
+
+    public int getZoomIndex() {
+        return zoomIndex;
+    }
+
+    private float getZoom() {
+        return ZOOM_LEVELS[zoomIndex];
+    }
+
     private static float quantize(float value) {
         return Math.round(value / QUANTIZE_STEP) * QUANTIZE_STEP;
     }
 
-    private int barLeft() { return getX() + MARGIN; }
-    private int barRight() { return getX() + width - MARGIN; }
-    private int barWidth() { return barRight() - barLeft(); }
-    private int barTop() { return getY(); }
-    private int barCenterY() { return barTop() + BAR_HEIGHT / 2; }
-
-    private int posToPixel(float pos) {
-        return barLeft() + Math.round((pos / railLength) * barWidth());
+    private void clampViewport() {
+        float halfView = railLength / (2 * getZoom());
+        if (halfView >= railLength / 2) {
+            viewCenter = railLength / 2;
+        } else {
+            viewCenter = Math.max(halfView, Math.min(railLength - halfView, viewCenter));
+        }
     }
 
-    private float pixelToPos(double px) {
-        float pos = (float) ((px - barLeft()) / barWidth()) * railLength;
+    // --- Overview geometry (full range) ---
+    private int ovLeft() { return getX() + MARGIN; }
+    private int ovRight() { return getX() + width - MARGIN; }
+    private int ovWidth() { return ovRight() - ovLeft(); }
+    private int ovTop() { return getY(); }
+
+    private int ovPosToPixel(float pos) {
+        return ovLeft() + Math.round((pos / railLength) * ovWidth());
+    }
+
+    private float ovPixelToPos(double px) {
+        return Math.max(0, Math.min(railLength, (float) ((px - ovLeft()) / ovWidth()) * railLength));
+    }
+
+    // --- Detail geometry (viewport range) ---
+    private int dtTop() { return getY() + OVERVIEW_H + OV_TICK_AREA + GAP; }
+    private int dtLeft() { return getX() + MARGIN; }
+    private int dtRight() { return getX() + width - MARGIN; }
+    private int dtWidth() { return dtRight() - dtLeft(); }
+
+    private float viewStart() { return Math.max(0, viewCenter - railLength / (2 * getZoom())); }
+    private float viewEnd() { return Math.min(railLength, viewCenter + railLength / (2 * getZoom())); }
+
+    private int dtPosToPixel(float pos) {
+        float vs = viewStart(), ve = viewEnd();
+        if (ve <= vs) return dtLeft();
+        return dtLeft() + Math.round(((pos - vs) / (ve - vs)) * dtWidth());
+    }
+
+    private float dtPixelToPos(double px) {
+        float vs = viewStart(), ve = viewEnd();
+        float pos = vs + (float) ((px - dtLeft()) / dtWidth()) * (ve - vs);
         return Math.max(0, Math.min(railLength, pos));
     }
 
+    // --- Tick computation ---
+    private static float niceStep(float range, int maxTicks) {
+        if (range <= 0 || maxTicks <= 0) return 1;
+        float roughStep = range / maxTicks;
+        float magnitude = (float) Math.pow(10, Math.floor(Math.log10(roughStep)));
+        float residual = roughStep / magnitude;
+        float nice;
+        if (residual <= 1.5f) nice = 1;
+        else if (residual <= 3.5f) nice = 2;
+        else if (residual <= 7.5f) nice = 5;
+        else nice = 10;
+        return nice * magnitude;
+    }
+
+    private static String formatTickLabel(float value, float step) {
+        if (step >= 1) return String.format("%.0f", value);
+        if (step >= 0.1f) return String.format("%.1f", value);
+        if (step >= 0.01f) return String.format("%.2f", value);
+        return String.format("%.3f", value);
+    }
+
+    // --- Rendering ---
     @Override
 #if MC_VERSION >= "12000"
-    public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float delta) {
+    public void renderWidget(GuiGraphics g, int mouseX, int mouseY, float delta) {
 #elif MC_VERSION >= "11904"
-    public void renderWidget(PoseStack guiGraphics, int mouseX, int mouseY, float delta) {
+    public void renderWidget(PoseStack g, int mouseX, int mouseY, float delta) {
 #else
-    public void render(PoseStack guiGraphics, int mouseX, int mouseY, float delta) {
+    public void render(PoseStack g, int mouseX, int mouseY, float delta) {
 #endif
         if (!visible) return;
         Font font = Minecraft.getInstance().font;
-        int bl = barLeft();
-        int br = barRight();
-        int bcy = barCenterY();
+
+        renderOverview(g, font);
+        renderDetail(g, font);
+    }
 
 #if MC_VERSION >= "12000"
-        guiGraphics.fill(bl, bcy - 1, br, bcy + 1, 0xFF808080);
-        guiGraphics.fill(bl, bcy - 3, bl + 1, bcy + 3, 0xFFFFFFFF);
-        guiGraphics.fill(br - 1, bcy - 3, br, bcy + 3, 0xFFFFFFFF);
+    private void renderOverview(GuiGraphics g, Font font) {
 #else
-        fill(guiGraphics, bl, bcy - 1, br, bcy + 1, 0xFF808080);
-        fill(guiGraphics, bl, bcy - 3, bl + 1, bcy + 3, 0xFFFFFFFF);
-        fill(guiGraphics, br - 1, bcy - 3, br, bcy + 3, 0xFFFFFFFF);
+    private void renderOverview(PoseStack g, Font font) {
 #endif
+        int ot = ovTop();
+        int ocy = ot + OVERVIEW_H / 2;
+        int ol = ovLeft(), or_ = ovRight();
 
-        String startLabel = "0";
-        String endLabel = String.format("%.1f", railLength);
-#if MC_VERSION >= "12000"
-        guiGraphics.drawString(font, startLabel, bl - font.width(startLabel) / 2, barTop() + BAR_HEIGHT + 2, 0xFFAAAAAA);
-        guiGraphics.drawString(font, endLabel, br - font.width(endLabel) / 2, barTop() + BAR_HEIGHT + 2, 0xFFAAAAAA);
-#else
-        drawString(guiGraphics, font, startLabel, bl - font.width(startLabel) / 2, barTop() + BAR_HEIGHT + 2, 0xFFAAAAAA);
-        drawString(guiGraphics, font, endLabel, br - font.width(endLabel) / 2, barTop() + BAR_HEIGHT + 2, 0xFFAAAAAA);
-#endif
+        dfill(g, ol, ocy - 1, or_, ocy + 1, 0xFF505050);
+        dfill(g, ol, ocy - 3, ol + 1, ocy + 3, 0xFFAAAAAA);
+        dfill(g, or_ - 1, ocy - 3, or_, ocy + 3, 0xFFAAAAAA);
+
+        int vpL = ovPosToPixel(viewStart());
+        int vpR = ovPosToPixel(viewEnd());
+        dfill(g, vpL, ot, vpR, ot + OVERVIEW_H, 0x30FFFFFF);
+        dfill(g, vpL, ot, vpL + 1, ot + OVERVIEW_H, 0xFF4488FF);
+        dfill(g, vpR - 1, ot, vpR, ot + OVERVIEW_H, 0xFF4488FF);
 
         for (int i = 0; i < positions.size(); i++) {
-            int px = posToPixel(positions.get(i));
-            int color = (i == selectedIndex) ? 0xFFFFFF00 : 0xFF00FF00;
+            int px = ovPosToPixel(positions.get(i));
+            int color = (i == selectedIndex) ? 0xFFFFFF00 : 0xFF00CC00;
+            dfill(g, px, ot + 1, px + 1, ot + OVERVIEW_H - 1, color);
+        }
+
+        int tickY = ot + OVERVIEW_H;
+        drawTicks(g, font, ol, or_, 0, railLength, tickY);
+    }
+
 #if MC_VERSION >= "12000"
-            guiGraphics.fill(px - HANDLE_HALF_W, bcy - HANDLE_HEIGHT / 2, px + HANDLE_HALF_W, bcy + HANDLE_HEIGHT / 2, color);
+    private void renderDetail(GuiGraphics g, Font font) {
 #else
-            fill(guiGraphics, px - HANDLE_HALF_W, bcy - HANDLE_HEIGHT / 2, px + HANDLE_HALF_W, bcy + HANDLE_HEIGHT / 2, color);
+    private void renderDetail(PoseStack g, Font font) {
+#endif
+        int dt = dtTop();
+        int dcy = dt + DETAIL_H / 2;
+        int dl = dtLeft(), dr = dtRight();
+        float vs = viewStart(), ve = viewEnd();
+
+        dfill(g, dl, dt, dr, dt + DETAIL_H, 0xFF1A1A1A);
+        dfill(g, dl, dcy - 1, dr, dcy + 1, 0xFF606060);
+
+        int hh = DETAIL_H / 2 - 2;
+        for (int i = 0; i < positions.size(); i++) {
+            float p = positions.get(i);
+            if (p < vs - 1 || p > ve + 1) continue;
+            int px = dtPosToPixel(p);
+            if (px < dl - HANDLE_HALF_W || px > dr + HANDLE_HALF_W) continue;
+            int color = (i == selectedIndex) ? 0xFFFFFF00 : 0xFF00FF00;
+            dfill(g, px - HANDLE_HALF_W, dcy - hh, px + HANDLE_HALF_W, dcy + hh, color);
+        }
+
+        drawTicks(g, font, dl, dr, vs, ve, dt + DETAIL_H);
+    }
+
+#if MC_VERSION >= "12000"
+    private void drawTicks(GuiGraphics g, Font font, int pxL, int pxR, float posStart, float posEnd, int y) {
+#else
+    private void drawTicks(PoseStack g, Font font, int pxL, int pxR, float posStart, float posEnd, int y) {
+#endif
+        float range = posEnd - posStart;
+        if (range <= 0) return;
+        int maxTicks = Math.max(2, (pxR - pxL) / 50);
+        float step = niceStep(range, maxTicks);
+        float first = (float) (Math.ceil(posStart / step) * step);
+        for (float t = first; t <= posEnd + step * 0.001f; t += step) {
+            int px = pxL + Math.round(((t - posStart) / range) * (pxR - pxL));
+            if (px < pxL - 1 || px > pxR + 1) continue;
+            dfill(g, px, y, px + 1, y + TICK_LEN, 0xFF606060);
+            String label = formatTickLabel(t, step);
+#if MC_VERSION >= "12000"
+            g.drawString(font, label, px - font.width(label) / 2, y + TICK_LEN + 1, 0xFF888888);
+#else
+            drawString(g, font, label, px - font.width(label) / 2, y + TICK_LEN + 1, 0xFF888888);
 #endif
         }
+    }
+
+#if MC_VERSION >= "12000"
+    private static void dfill(GuiGraphics g, int x1, int y1, int x2, int y2, int color) {
+        g.fill(x1, y1, x2, y2, color);
+    }
+#else
+    private static void dfill(PoseStack g, int x1, int y1, int x2, int y2, int color) {
+        AbstractWidget.fill(g, x1, y1, x2, y2, color);
+    }
+#endif
+
+    // --- Mouse interaction ---
+    private boolean isInOverview(double mx, double my) {
+        return mx >= ovLeft() - 2 && mx <= ovRight() + 2
+                && my >= ovTop() && my <= ovTop() + OVERVIEW_H;
+    }
+
+    private boolean isInDetail(double mx, double my) {
+        int dt = dtTop();
+        return mx >= dtLeft() - HANDLE_HALF_W && mx <= dtRight() + HANDLE_HALF_W
+                && my >= dt - 2 && my <= dt + DETAIL_H + 2;
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!visible || !active) return false;
-        if (mouseX < barLeft() - HANDLE_HALF_W || mouseX > barRight() + HANDLE_HALF_W) return false;
-        if (mouseY < barCenterY() - HANDLE_HEIGHT / 2 - 2 || mouseY > barCenterY() + HANDLE_HEIGHT / 2 + 2) return false;
 
-        if (button == 0) {
-            int closestIdx = findClosestHandle(mouseX);
-            if (closestIdx >= 0) {
-                selectedIndex = closestIdx;
-                isDragging = true;
-            } else {
-                float newPos = quantize(pixelToPos(mouseX));
-                positions.add(newPos);
-                Collections.sort(positions);
-                selectedIndex = positions.indexOf(newPos);
-                isDragging = true;
-                notifyChange();
-            }
-            notifySelectionChange();
+        if (isInOverview(mouseX, mouseY) && button == 0) {
+            viewCenter = ovPixelToPos(mouseX);
+            clampViewport();
+            isDraggingOverview = true;
             return true;
-        } else if (button == 1) {
-            int closestIdx = findClosestHandle(mouseX);
-            if (closestIdx >= 0) {
-                positions.remove(closestIdx);
-                if (selectedIndex >= positions.size()) {
-                    selectedIndex = positions.isEmpty() ? -1 : positions.size() - 1;
+        }
+
+        if (isInDetail(mouseX, mouseY)) {
+            if (button == 0) {
+                int closestIdx = findClosestDetailHandle(mouseX);
+                if (closestIdx >= 0) {
+                    selectedIndex = closestIdx;
+                    isDragging = true;
+                } else {
+                    float newPos = quantize(dtPixelToPos(mouseX));
+                    positions.add(newPos);
+                    Collections.sort(positions);
+                    selectedIndex = positions.indexOf(newPos);
+                    isDragging = true;
+                    notifyChange();
                 }
-                isDragging = false;
-                notifyChange();
                 notifySelectionChange();
                 return true;
+            } else if (button == 1) {
+                int closestIdx = findClosestDetailHandle(mouseX);
+                if (closestIdx >= 0) {
+                    positions.remove(closestIdx);
+                    if (selectedIndex >= positions.size()) {
+                        selectedIndex = positions.isEmpty() ? -1 : positions.size() - 1;
+                    }
+                    isDragging = false;
+                    notifyChange();
+                    notifySelectionChange();
+                    return true;
+                }
             }
         }
+
         return false;
     }
 
-    private int findClosestHandle(double mouseX) {
+    private int findClosestDetailHandle(double mouseX) {
         int closestIdx = -1;
         double closestDist = Double.MAX_VALUE;
+        float vs = viewStart(), ve = viewEnd();
         for (int i = 0; i < positions.size(); i++) {
-            double dist = Math.abs(posToPixel(positions.get(i)) - mouseX);
+            float p = positions.get(i);
+            if (p < vs - 1 || p > ve + 1) continue;
+            double dist = Math.abs(dtPosToPixel(p) - mouseX);
             if (dist < closestDist && dist <= HANDLE_HALF_W + 4) {
                 closestDist = dist;
                 closestIdx = i;
@@ -192,8 +347,13 @@ public class WidgetManualPositionBar extends AbstractWidget {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (isDraggingOverview && button == 0) {
+            viewCenter = ovPixelToPos(mouseX);
+            clampViewport();
+            return true;
+        }
         if (isDragging && selectedIndex >= 0 && selectedIndex < positions.size() && button == 0) {
-            float newPos = quantize(pixelToPos(mouseX));
+            float newPos = quantize(dtPixelToPos(mouseX));
             positions.set(selectedIndex, newPos);
             notifyChange();
             notifySelectionChange();
@@ -204,6 +364,10 @@ public class WidgetManualPositionBar extends AbstractWidget {
 
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (isDraggingOverview && button == 0) {
+            isDraggingOverview = false;
+            return true;
+        }
         if (isDragging && button == 0) {
             isDragging = false;
             float draggedValue = (selectedIndex >= 0 && selectedIndex < positions.size())
@@ -215,6 +379,30 @@ public class WidgetManualPositionBar extends AbstractWidget {
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (!visible || !active) return false;
+        if (mouseX < getX() || mouseX > getX() + width || mouseY < getY() || mouseY > getY() + TOTAL_H) {
+            return false;
+        }
+
+        float cursorPos = dtPixelToPos(mouseX);
+        float pixelFrac = dtWidth() > 0 ? (float) ((mouseX - dtLeft()) / dtWidth()) : 0.5f;
+
+        if (scrollY > 0) {
+            zoomIndex = Math.min(ZOOM_LEVELS.length - 1, zoomIndex + 1);
+        } else if (scrollY < 0) {
+            zoomIndex = Math.max(0, zoomIndex - 1);
+        } else {
+            return false;
+        }
+
+        float newHalfView = railLength / (2 * getZoom());
+        viewCenter = cursorPos - (2 * pixelFrac - 1) * newHalfView;
+        clampViewport();
+        return true;
     }
 
     private void notifyChange() {

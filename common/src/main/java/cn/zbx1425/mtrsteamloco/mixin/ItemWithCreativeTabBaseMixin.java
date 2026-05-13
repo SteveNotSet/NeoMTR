@@ -1,7 +1,7 @@
 package cn.zbx1425.mtrsteamloco.mixin;
 
 import cn.zbx1425.mtrsteamloco.gui.BrushEditRailScreen;
-import cn.zbx1425.mtrsteamloco.gui.PlacementEditorScreen;
+import cn.zbx1425.mtrsteamloco.gui.RailEditorVisualScreen;
 import cn.zbx1425.mtrsteamloco.network.PacketScreen;
 import mtr.item.ItemWithCreativeTabBase;
 import net.minecraft.core.BlockPos;
@@ -49,22 +49,22 @@ public abstract class ItemWithCreativeTabBaseMixin extends Item {
             } else {
                 return super.useOn(context);
             }
-        } else if (this == mtr.Items.PLACEMENT_TOOL.get()) {
+        } else if (this == mtr.Items.RAIL_EDITOR_VISUAL.get()) {
             Level level = context.getLevel();
             BlockState blockState = level.getBlockState(context.getClickedPos());
             if (blockState.getBlock() instanceof mtr.block.BlockNode) {
                 if (context.isSecondaryUseActive()) {
                     if (level.isClientSide) {
-                        PlacementEditorScreen.acquirePickInfoWhenUse();
+                        RailEditorVisualScreen.acquirePickInfoWhenUse();
                         return super.useOn(context);
                     } else {
-                        PacketScreen.sendScreenBlockS2C((ServerPlayer) context.getPlayer(), "placement_editor", BlockPos.ZERO);
+                        PacketScreen.sendScreenBlockS2C((ServerPlayer) context.getPlayer(), "rail_editor_visual", BlockPos.ZERO);
                     }
                 } else {
                     if (level.isClientSide) {
-                        PlacementEditorScreen.acquirePickInfoWhenUse();
+                        RailEditorVisualScreen.acquirePickInfoWhenUse();
                         CompoundTag toolTag = context.getPlayer().getMainHandItem().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
-                        PlacementEditorScreen.applyPlacementTemplate(toolTag, true);
+                        RailEditorVisualScreen.batchApplyBrushTemplate(toolTag);
                     } else {
                         return super.useOn(context);
                     }

@@ -8,13 +8,15 @@ import java.util.List;
 public interface RailExtraSupplier {
 
     // "": default, "null": hidden
+    @Deprecated()
     String getModelKey();
 
+    @Deprecated()
     void setModelKey(String key);
 
-    boolean getRenderReversed();
+    boolean getIsSecondaryDir();
 
-    void setRenderReversed(boolean value);
+    void setIsSecondaryDir(boolean value);
 
     float getVerticalCurveRadius();
 
@@ -22,9 +24,9 @@ public interface RailExtraSupplier {
 
     int getHeight();
 
-    List<RailModelPlacement> getModelPlacements();
+    List<RailModelRepeater> getRepeaters();
 
-    void setModelPlacements(List<RailModelPlacement> placements);
+    void setRepeaters(List<RailModelRepeater> repeaters);
 
     static float getVTheta(Rail rail, double verticalCurveRadius) {
         double H = Math.abs(((RailExtraSupplier)rail).getHeight());

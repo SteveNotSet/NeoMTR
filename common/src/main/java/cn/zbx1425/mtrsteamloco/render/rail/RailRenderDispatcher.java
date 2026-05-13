@@ -42,7 +42,7 @@ public class RailRenderDispatcher {
 
     public static boolean isHoldingRailItem = false;
     public static boolean isHoldingBrush = false;
-    public static boolean isHoldingPlacementTool = false;
+    public static boolean isHoldingRailEditorVisual = false;
     public static boolean isHoldingRailItemOrBrush = false;
     public static boolean isPreviewingModel = false;
 
@@ -159,12 +159,12 @@ public class RailRenderDispatcher {
         if (!isPreviewingModel) {
             isHoldingRailItem = RenderTrains.isHoldingRailRelated(Minecraft.getInstance().player);
             isHoldingBrush = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(mtr.Items.BRUSH.get()));
-            isHoldingPlacementTool = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(mtr.Items.PLACEMENT_TOOL.get()));
-            isHoldingRailItemOrBrush = isHoldingRailItem || isHoldingBrush || isHoldingPlacementTool;
+            isHoldingRailEditorVisual = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(mtr.Items.RAIL_EDITOR_VISUAL.get()));
+            isHoldingRailItemOrBrush = isHoldingRailItem || isHoldingBrush || isHoldingRailEditorVisual;
         } else {
             isHoldingRailItem = false;
             isHoldingBrush = false;
-            isHoldingPlacementTool = false;
+            isHoldingRailEditorVisual = false;
             isHoldingRailItemOrBrush = false;
         }
     }

@@ -19,19 +19,19 @@ import org.msgpack.value.MapValue;
 import java.io.IOException;
 import java.util.*;
 
-public class RailModelPlacement {
+public class RailModelRepeater {
 
     public String modelKey;
-    public PlacementMode placementMode;
+    public RepeaterMode repeaterMode;
     public float offset;
     public boolean offsetFromStart;
     public boolean reversed;
     public float intervalOverride;
     public List<Float> manualPositions;
 
-    public RailModelPlacement() {
+    public RailModelRepeater() {
         this.modelKey = "";
-        this.placementMode = PlacementMode.STRETCH_INTERVAL;
+        this.repeaterMode = RepeaterMode.STRETCH_INTERVAL;
         this.offset = 0;
         this.offsetFromStart = true;
         this.reversed = false;
@@ -39,16 +39,16 @@ public class RailModelPlacement {
         this.manualPositions = Collections.emptyList();
     }
 
-    public RailModelPlacement(String modelKey, boolean reversed) {
+    public RailModelRepeater(String modelKey, boolean reversed) {
         this();
         this.modelKey = modelKey;
         this.reversed = reversed;
     }
 
-    public RailModelPlacement copy() {
-        RailModelPlacement copy = new RailModelPlacement();
+    public RailModelRepeater copy() {
+        RailModelRepeater copy = new RailModelRepeater();
         copy.modelKey = this.modelKey;
-        copy.placementMode = this.placementMode;
+        copy.repeaterMode = this.repeaterMode;
         copy.offset = this.offset;
         copy.offsetFromStart = this.offsetFromStart;
         copy.reversed = this.reversed;
@@ -58,9 +58,10 @@ public class RailModelPlacement {
     }
 
     public boolean isLegacyCompatible() {
-        return placementMode == PlacementMode.STRETCH_INTERVAL
+        return repeaterMode == RepeaterMode.STRETCH_INTERVAL
                 && offset == 0
                 && offsetFromStart
+                && !reversed
                 && intervalOverride == 0
                 && manualPositions.isEmpty();
     }
@@ -72,7 +73,7 @@ public class RailModelPlacement {
     public void toMessagePack(MessagePacker packer) throws IOException {
         packer.packMapHeader(7);
         packer.packString("model_key").packString(modelKey);
-        packer.packString("mode").packInt(placementMode.ordinal());
+        packer.packString("mode").packInt(repeaterMode.ordinal());
         packer.packString("offset").packFloat(offset);
         packer.packString("offset_from_start").packBoolean(offsetFromStart);
         packer.packString("reversed").packBoolean(reversed);
@@ -83,30 +84,30 @@ public class RailModelPlacement {
         }
     }
 
-    public static RailModelPlacement fromMessagePack(MapValue mapValue) {
-        RailModelPlacement placement = new RailModelPlacement();
+    public static RailModelRepeater fromMessagePack(MapValue mapValue) {
+        RailModelRepeater repeater = new RailModelRepeater();
         Map<Value, Value> map = mapValue.map();
         for (Map.Entry<Value, Value> entry : map.entrySet()) {
             String key = entry.getKey().asStringValue().asString();
             Value val = entry.getValue();
             switch (key) {
                 case "model_key":
-                    placement.modelKey = val.asStringValue().asString();
+                    repeater.modelKey = val.asStringValue().asString();
                     break;
                 case "mode":
-                    placement.placementMode = PlacementMode.fromIndex(val.asIntegerValue().asInt());
+                    repeater.repeaterMode = RepeaterMode.fromIndex(val.asIntegerValue().asInt());
                     break;
                 case "offset":
-                    placement.offset = val.asFloatValue().toFloat();
+                    repeater.offset = val.asFloatValue().toFloat();
                     break;
                 case "offset_from_start":
-                    placement.offsetFromStart = val.asBooleanValue().getBoolean();
+                    repeater.offsetFromStart = val.asBooleanValue().getBoolean();
                     break;
                 case "reversed":
-                    placement.reversed = val.asBooleanValue().getBoolean();
+                    repeater.reversed = val.asBooleanValue().getBoolean();
                     break;
                 case "interval_override":
-                    placement.intervalOverride = val.asFloatValue().toFloat();
+                    repeater.intervalOverride = val.asFloatValue().toFloat();
                     break;
                 case "manual_positions":
                     ArrayValue arr = val.asArrayValue();
@@ -114,16 +115,16 @@ public class RailModelPlacement {
                     for (Value v : arr) {
                         positions.add(v.asFloatValue().toFloat());
                     }
-                    placement.manualPositions = positions;
+                    repeater.manualPositions = positions;
                     break;
             }
         }
-        return placement;
+        return repeater;
     }
 
     public void writePacket(FriendlyByteBuf packet) {
         packet.writeUtf(modelKey);
-        packet.writeByte(placementMode.ordinal());
+        packet.writeByte(repeaterMode.ordinal());
         packet.writeFloat(offset);
         packet.writeBoolean(offsetFromStart);
         packet.writeBoolean(reversed);
@@ -134,28 +135,28 @@ public class RailModelPlacement {
         }
     }
 
-    public static RailModelPlacement readPacket(FriendlyByteBuf packet) {
-        RailModelPlacement placement = new RailModelPlacement();
-        placement.modelKey = packet.readUtf();
-        placement.placementMode = PlacementMode.fromIndex(packet.readByte());
-        placement.offset = packet.readFloat();
-        placement.offsetFromStart = packet.readBoolean();
-        placement.reversed = packet.readBoolean();
-        placement.intervalOverride = packet.readFloat();
+    public static RailModelRepeater readPacket(FriendlyByteBuf packet) {
+        RailModelRepeater repeater = new RailModelRepeater();
+        repeater.modelKey = packet.readUtf();
+        repeater.repeaterMode = RepeaterMode.fromIndex(packet.readByte());
+        repeater.offset = packet.readFloat();
+        repeater.offsetFromStart = packet.readBoolean();
+        repeater.reversed = packet.readBoolean();
+        repeater.intervalOverride = packet.readFloat();
         int count = packet.readVarInt();
         List<Float> positions = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             positions.add(packet.readFloat());
         }
-        placement.manualPositions = positions;
-        return placement;
+        repeater.manualPositions = positions;
+        return repeater;
     }
 
     private static final Map<UUID, List<UndoEntry>> undoSnapshots = new HashMap<>();
 
     private record UndoEntry(BlockPos posA, BlockPos posB,
-                             List<RailModelPlacement> oldPlacementsAB,
-                             List<RailModelPlacement> oldPlacementsBA) {}
+                             List<RailModelRepeater> oldPlacementsAB,
+                             List<RailModelRepeater> oldPlacementsBA) {}
 
     /**
      * Server-side propagation: starting from the rail (railStart -> railEnd),
@@ -179,7 +180,7 @@ public class RailModelPlacement {
 
         Rail firstRail = railwayData.getRail(entryNode, exitNode);
         if (firstRail == null) {
-            player.displayClientMessage(Component.literal("No rail found."), true);
+            player.displayClientMessage(Component.literal("No rail found."), false);
             return;
         }
 
@@ -223,7 +224,8 @@ public class RailModelPlacement {
                 } else {
                     msg += String.format(" (%d branches)", forwardCandidates.size());
                 }
-                finishPropagation(level, player, snapshot, modifiedRails, railwayData, msg);
+                finishPropagation(level, player, snapshot, modifiedRails, railwayData, msg,
+                        exitNode, currentOffset, modelKey, interval, reversed);
                 return;
             }
 
@@ -233,10 +235,11 @@ public class RailModelPlacement {
 
             int matchingIndex = findMatchingPlacement(nextRail, modelKey, interval);
             if (matchingIndex < 0) {
-                String msg = String.format("Propagation stopped at (%d, %d, %d). Exit offset: %.3f. Modified %d rail(s). (no matching placement on next rail)",
+                String msg = String.format("Propagation stopped at (%d, %d, %d). Exit offset: %.3f. Modified %d rail(s). (no matching repeater on next rail)",
                         exitNode.getX(), exitNode.getY(), exitNode.getZ(),
                         currentOffset, modifiedRails.size());
-                finishPropagation(level, player, snapshot, modifiedRails, railwayData, msg);
+                finishPropagation(level, player, snapshot, modifiedRails, railwayData, msg,
+                        exitNode, currentOffset, modelKey, interval, reversed);
                 return;
             }
 
@@ -253,13 +256,14 @@ public class RailModelPlacement {
         }
 
         finishPropagation(level, player, snapshot, modifiedRails, railwayData,
-                String.format("Propagation complete. Modified %d rail(s).", modifiedRails.size()));
+                String.format("Propagation complete. Modified %d rail(s).", modifiedRails.size()),
+                exitNode, currentOffset, modelKey, interval, reversed);
     }
 
     public static void undoPropagate(RailwayData railwayData, ServerPlayer player) {
         List<UndoEntry> snapshot = undoSnapshots.remove(player.getUUID());
         if (snapshot == null || snapshot.isEmpty()) {
-            player.displayClientMessage(Component.literal("Nothing to undo."), true);
+            player.displayClientMessage(Component.literal("Nothing to undo."), false);
             return;
         }
         ServerLevel level = (ServerLevel) player.level();
@@ -267,43 +271,43 @@ public class RailModelPlacement {
         for (UndoEntry entry : snapshot) {
             Rail railAB = railwayData.getRail(entry.posA, entry.posB);
             if (railAB != null) {
-                ((RailExtraSupplier) railAB).setModelPlacements(entry.oldPlacementsAB);
+                ((RailExtraSupplier) railAB).setRepeaters(entry.oldPlacementsAB);
             }
             Rail railBA = railwayData.getRail(entry.posB, entry.posA);
             if (railBA != null) {
-                ((RailExtraSupplier) railBA).setModelPlacements(entry.oldPlacementsBA);
+                ((RailExtraSupplier) railBA).setRepeaters(entry.oldPlacementsBA);
             }
             modifiedRails.add(new BlockPos[]{entry.posA, entry.posB});
         }
         broadcastRailUpdates(level, railwayData, modifiedRails);
         player.displayClientMessage(
                 Component.literal(String.format("Undone propagation on %d rail(s).", snapshot.size())),
-                true);
+                false);
     }
 
     private static void snapshotRail(RailwayData railwayData, List<UndoEntry> snapshot,
                                      BlockPos posA, BlockPos posB) {
         Rail railAB = railwayData.getRail(posA, posB);
         Rail railBA = railwayData.getRail(posB, posA);
-        List<RailModelPlacement> snapAB = copyPlacementList(railAB);
-        List<RailModelPlacement> snapBA = copyPlacementList(railBA);
+        List<RailModelRepeater> snapAB = copyPlacementList(railAB);
+        List<RailModelRepeater> snapBA = copyPlacementList(railBA);
         snapshot.add(new UndoEntry(posA, posB, snapAB, snapBA));
     }
 
-    private static List<RailModelPlacement> copyPlacementList(Rail rail) {
+    private static List<RailModelRepeater> copyPlacementList(Rail rail) {
         if (rail == null) return Collections.emptyList();
-        List<RailModelPlacement> result = new ArrayList<>();
-        for (RailModelPlacement p : ((RailExtraSupplier) rail).getModelPlacements()) {
+        List<RailModelRepeater> result = new ArrayList<>();
+        for (RailModelRepeater p : ((RailExtraSupplier) rail).getRepeaters()) {
             result.add(p.copy());
         }
         return result;
     }
 
     private static int findMatchingPlacement(Rail rail, String modelKey, float interval) {
-        List<RailModelPlacement> placements = ((RailExtraSupplier) rail).getModelPlacements();
-        for (int i = 0; i < placements.size(); i++) {
-            RailModelPlacement p = placements.get(i);
-            if (p.placementMode == PlacementMode.FIXED_INTERVAL
+        List<RailModelRepeater> repeaters = ((RailExtraSupplier) rail).getRepeaters();
+        for (int i = 0; i < repeaters.size(); i++) {
+            RailModelRepeater p = repeaters.get(i);
+            if (p.repeaterMode == RepeaterMode.FIXED_INTERVAL
                     && p.modelKey.equals(modelKey)
                     && Math.abs(p.intervalOverride - interval) < 0.001f) {
                 return i;
@@ -319,12 +323,12 @@ public class RailModelPlacement {
         Rail railAB = railwayData.getRail(posA, posB);
         Rail railBA = railwayData.getRail(posB, posA);
         if (railAB != null) {
-            RailModelPlacement p = ((RailExtraSupplier) railAB).getModelPlacements().get(placementIndex);
+            RailModelRepeater p = ((RailExtraSupplier) railAB).getRepeaters().get(placementIndex);
             p.offset = offset;
             p.offsetFromStart = offsetFromStart;
         }
         if (railBA != null) {
-            RailModelPlacement p = ((RailExtraSupplier) railBA).getModelPlacements().get(placementIndex);
+            RailModelRepeater p = ((RailExtraSupplier) railBA).getRepeaters().get(placementIndex);
             p.offset = offset;
             p.offsetFromStart = offsetFromStart;
         }
@@ -335,49 +339,59 @@ public class RailModelPlacement {
                                            int placementIndex, String modelKey,
                                            float interval, boolean reversed,
                                            float offset, boolean offsetFromStart) {
-        RailModelPlacement placement = new RailModelPlacement();
-        placement.modelKey = modelKey;
-        placement.placementMode = PlacementMode.FIXED_INTERVAL;
-        placement.offset = offset;
-        placement.offsetFromStart = offsetFromStart;
-        placement.reversed = reversed;
-        placement.intervalOverride = interval > 0 ? interval : 0;
-        placement.manualPositions = Collections.emptyList();
+        RailModelRepeater repeater = new RailModelRepeater();
+        repeater.modelKey = modelKey;
+        repeater.repeaterMode = RepeaterMode.FIXED_INTERVAL;
+        repeater.offset = offset;
+        repeater.offsetFromStart = offsetFromStart;
+        repeater.reversed = reversed;
+        repeater.intervalOverride = interval > 0 ? interval : 0;
+        repeater.manualPositions = Collections.emptyList();
 
-        applyPlacementToRail(railwayData, posStart, posEnd, placementIndex, placement);
+        applyRepeaterToRailPair(railwayData, posStart, posEnd, placementIndex, repeater);
     }
 
-    private static void applyPlacementToRail(RailwayData railwayData,
-                                             BlockPos posA, BlockPos posB,
-                                             int placementIndex,
-                                             RailModelPlacement placement) {
+    private static void applyRepeaterToRailPair(RailwayData railwayData,
+                                                BlockPos posA, BlockPos posB,
+                                                int repeaterIndex,
+                                                RailModelRepeater repeater) {
         Rail railAB = railwayData.getRail(posA, posB);
         Rail railBA = railwayData.getRail(posB, posA);
 
         if (railAB != null) {
-            ensurePlacementIndex((RailExtraSupplier) railAB, placementIndex);
-            ((RailExtraSupplier) railAB).getModelPlacements().set(placementIndex, placement.copy());
+            ensureRepeaterIndexPresence((RailExtraSupplier) railAB, repeaterIndex);
+            ((RailExtraSupplier) railAB).getRepeaters().set(repeaterIndex, repeater.copy());
         }
         if (railBA != null) {
-            ensurePlacementIndex((RailExtraSupplier) railBA, placementIndex);
-            ((RailExtraSupplier) railBA).getModelPlacements().set(placementIndex, placement.copy());
+            ensureRepeaterIndexPresence((RailExtraSupplier) railBA, repeaterIndex);
+            ((RailExtraSupplier) railBA).getRepeaters().set(repeaterIndex, repeater.copy());
         }
     }
 
-    private static void ensurePlacementIndex(RailExtraSupplier supplier, int index) {
-        List<RailModelPlacement> placements = supplier.getModelPlacements();
-        while (placements.size() <= index) {
-            placements.add(new RailModelPlacement());
+    private static void ensureRepeaterIndexPresence(RailExtraSupplier supplier, int index) {
+        List<RailModelRepeater> repeaters = supplier.getRepeaters();
+        while (repeaters.size() <= index) {
+            repeaters.add(new RailModelRepeater());
         }
     }
 
     private static void finishPropagation(ServerLevel level, ServerPlayer player,
                                           List<UndoEntry> snapshot,
                                           List<BlockPos[]> modifiedRails,
-                                          RailwayData railwayData, String message) {
+                                          RailwayData railwayData, String message,
+                                          BlockPos terminalNode, float exitOffset,
+                                          String modelKey, float interval, boolean reversed) {
         undoSnapshots.put(player.getUUID(), snapshot);
         broadcastRailUpdates(level, railwayData, modifiedRails);
-        player.displayClientMessage(Component.literal(message), true);
+        player.displayClientMessage(Component.literal(message), false);
+
+        final FriendlyByteBuf resultPacket = new FriendlyByteBuf(Unpooled.buffer());
+        resultPacket.writeBlockPos(terminalNode);
+        resultPacket.writeFloat(exitOffset);
+        resultPacket.writeUtf(modelKey);
+        resultPacket.writeFloat(interval);
+        resultPacket.writeBoolean(reversed);
+        Registry.sendToPlayer(player, IPacket.PACKET_PROPAGATE_REPEATER_RESULT, resultPacket);
     }
 
     private static void broadcastRailUpdates(ServerLevel level, RailwayData railwayData,

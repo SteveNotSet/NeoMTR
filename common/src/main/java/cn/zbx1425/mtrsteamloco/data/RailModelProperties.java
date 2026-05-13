@@ -24,19 +24,21 @@ public class RailModelProperties {
 
     public float yOffset;
 
-    public RailModelProperties(Component name, RawModel rawModel, float repeatInterval, float yOffset) {
+    public boolean tiltToGradient;
+
+    public RailModelProperties(Component name, RawModel rawModel, float repeatInterval,
+                               float yOffset, boolean tiltToGradient) {
         this.name = name;
+        this.yOffset = yOffset;
+        this.repeatInterval = repeatInterval;
+        this.tiltToGradient = tiltToGradient;
 
         if (rawModel == null) {
             this.rawModel = null;
             this.uploadedModel = null;
             this.boundingBox = 0L;
-            this.repeatInterval = repeatInterval;
-            this.yOffset = yOffset;
             return;
         }
-
-        this.yOffset = yOffset;
 
         rawModel.clearAttrState(VertAttrType.COLOR);
         rawModel.applyRotation(new Vector3f(0.577f, 0.577f, 0.577f), (float)Math.toRadians(1));
@@ -51,7 +53,5 @@ public class RailModelProperties {
             }
         }
         boundingBox = ((long)Float.floatToIntBits(yMin) << 32) | (long)Float.floatToIntBits(yMax);
-
-        this.repeatInterval = repeatInterval;
     }
 }

@@ -43,9 +43,11 @@ public class RailModelRegistry {
         elements.clear();
 
         //
-        register("", new RailModelProperties(Text.translatable("rail.mtrsteamloco.default"), null, 1f, 0f));
+        register("", new RailModelProperties(Text.translatable("rail.mtrsteamloco.default"), null, 1f,
+            0f, true));
         // This is pulled from registry and shouldn't be shown
-        register("null", new RailModelProperties(Text.translatable("rail.mtrsteamloco.hidden"), null, Float.MAX_VALUE, 0f));
+        register("null", new RailModelProperties(Text.translatable("rail.mtrsteamloco.hidden"), null, Float.MAX_VALUE,
+            0f, true));
 
         try {
             RawModel railNodeRawModel = MainClient.modelManager.loadRawModel(resourceManager,
@@ -83,7 +85,7 @@ public class RailModelRegistry {
     }
 
     private static final RailModelProperties EMPTY_PROPERTY = new RailModelProperties(
-            Text.literal(""), null, 1f, 0
+            Text.literal(""), null, 1f, 0, true
     );
 
     public static RailModelProperties getProperty(String key) {
@@ -103,7 +105,7 @@ public class RailModelRegistry {
         if (obj.has("textureId")) {
             rawModel.replaceTexture("default.png", ResourceLocation.parse(obj.get("textureId").getAsString()));
         }
-        if (obj.has("flipV") && obj.get("flipV").getAsBoolean()) {
+        if (!obj.has("flipV") || obj.get("flipV").getAsBoolean()) {
             rawModel.applyUVMirror(false, true);
         }
 
@@ -134,6 +136,9 @@ public class RailModelRegistry {
         float repeatInterval = obj.has("repeatInterval") ? obj.get("repeatInterval").getAsFloat() : 0.5f;
         float yOffset = obj.has("yOffset") ? obj.get("yOffset").getAsFloat() : 0f;
 
-        return new RailModelProperties(Text.translatable(obj.get("name").getAsString()), rawModel, repeatInterval, yOffset);
+        boolean tiltToGradient = !obj.has("tiltToGradient") || obj.get("tiltToGradient").getAsBoolean();
+
+        return new RailModelProperties(Text.translatable(obj.get("name").getAsString()), rawModel, repeatInterval,
+            yOffset, tiltToGradient);
     }
 }

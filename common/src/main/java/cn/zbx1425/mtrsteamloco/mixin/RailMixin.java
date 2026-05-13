@@ -3,7 +3,7 @@ package cn.zbx1425.mtrsteamloco.mixin;
 import cn.zbx1425.mtrsteamloco.ClientConfig;
 import cn.zbx1425.mtrsteamloco.Main;
 import cn.zbx1425.mtrsteamloco.data.RailExtraSupplier;
-import cn.zbx1425.mtrsteamloco.data.RailModelPlacement;
+import cn.zbx1425.mtrsteamloco.data.RailModelRepeater;
 import cn.zbx1425.mtrsteamloco.data.RailModelRegistry;
 import cn.zbx1425.mtrsteamloco.render.rail.RailRenderDispatcher;
 import io.netty.buffer.Unpooled;
@@ -30,34 +30,36 @@ import java.util.*;
 @Mixin(value = Rail.class, priority = 1425)
 public abstract class RailMixin implements RailExtraSupplier {
 
-    private List<RailModelPlacement> modelPlacements = new ArrayList<>(Collections.singletonList(new RailModelPlacement()));
+    private List<RailModelRepeater> repeaters = new ArrayList<>(Collections.singletonList(new RailModelRepeater()));
     private float verticalCurveRadius = 0f;
+    private boolean isSecondaryDir = false;
 
-    private RailModelPlacement firstPlacement() {
-        if (modelPlacements.isEmpty()) {
-            modelPlacements.add(new RailModelPlacement());
+    private RailModelRepeater firstRepeater() {
+        if (repeaters.isEmpty()) {
+            repeaters.add(new RailModelRepeater());
         }
-        return modelPlacements.get(0);
+        return repeaters.get(0);
     }
 
     @Override
     public String getModelKey() {
-        return firstPlacement().modelKey;
+        return firstRepeater().modelKey;
     }
 
     @Override
     public void setModelKey(String key) {
-        firstPlacement().modelKey = key;
+        firstRepeater().modelKey = key;
     }
 
     @Override
-    public boolean getRenderReversed() {
-        return firstPlacement().reversed;
+    public boolean getIsSecondaryDir() {
+        return isSecondaryDir;
     }
 
     @Override
-    public void setRenderReversed(boolean value) {
-        firstPlacement().reversed = value;
+    public void setIsSecondaryDir(boolean value) {
+        this.isSecondaryDir = value;
+        dataBytes = null;
     }
 
     @Override
@@ -76,13 +78,13 @@ public abstract class RailMixin implements RailExtraSupplier {
     }
 
     @Override
-    public List<RailModelPlacement> getModelPlacements() {
-        return modelPlacements;
+    public List<RailModelRepeater> getRepeaters() {
+        return repeaters;
     }
 
     @Override
-    public void setModelPlacements(List<RailModelPlacement> placements) {
-        this.modelPlacements = new ArrayList<>(placements);
+    public void setRepeaters(List<RailModelRepeater> repeaters) {
+        this.repeaters = new ArrayList<>(repeaters);
         dataBytes = null;
     }
 
@@ -90,19 +92,18 @@ public abstract class RailMixin implements RailExtraSupplier {
     private void fromMessagePack(Map<String, Value> map, CallbackInfo ci) {
         MessagePackHelper messagePackHelper = new MessagePackHelper(map);
         verticalCurveRadius = messagePackHelper.getFloat("vertical_curve_radius", 0);
+        isSecondaryDir = messagePackHelper.getBoolean("is_secondary_dir", false);
 
-        if (map.containsKey("model_placements")) {
-            ArrayValue arr = map.get("model_placements").asArrayValue();
-            modelPlacements = new ArrayList<>(arr.size());
+        if (map.containsKey("repeaters")) {
+            ArrayValue arr = map.get("repeaters").asArrayValue();
+            repeaters = new ArrayList<>(arr.size());
             for (Value v : arr) {
-                modelPlacements.add(RailModelPlacement.fromMessagePack(v.asMapValue()));
+                repeaters.add(RailModelRepeater.fromMessagePack(v.asMapValue()));
             }
         } else {
-            RailModelPlacement legacy = new RailModelPlacement(
-                    messagePackHelper.getString("model_key", ""),
-                    messagePackHelper.getBoolean("is_secondary_dir", false)
-            );
-            modelPlacements = new ArrayList<>(Collections.singletonList(legacy));
+            RailModelRepeater legacy = new RailModelRepeater();
+            legacy.modelKey = messagePackHelper.getString("model_key", "");
+            repeaters = new ArrayList<>(Collections.singletonList(legacy));
         }
     }
 
@@ -110,22 +111,22 @@ public abstract class RailMixin implements RailExtraSupplier {
     private void toMessagePack(MessagePacker messagePacker, CallbackInfo ci) throws IOException {
         messagePacker.packString("vertical_curve_radius").packFloat(verticalCurveRadius);
 
-        if (modelPlacements.size() == 1 && firstPlacement().isLegacyCompatible()) {
-            messagePacker.packString("model_key").packString(firstPlacement().modelKey);
-            messagePacker.packString("is_secondary_dir").packBoolean(firstPlacement().reversed);
+        if (repeaters.size() == 1 && firstRepeater().isLegacyCompatible()) {
+            messagePacker.packString("model_key").packString(firstRepeater().modelKey);
+            messagePacker.packString("is_secondary_dir").packBoolean(isSecondaryDir);
         } else {
-            messagePacker.packString("model_key").packString(firstPlacement().modelKey);
-            messagePacker.packString("is_secondary_dir").packBoolean(firstPlacement().reversed);
-            messagePacker.packString("model_placements").packArrayHeader(modelPlacements.size());
-            for (RailModelPlacement placement : modelPlacements) {
-                placement.toMessagePack(messagePacker);
+            messagePacker.packString("model_key").packString(firstRepeater().modelKey);
+            messagePacker.packString("is_secondary_dir").packBoolean(isSecondaryDir);
+            messagePacker.packString("repeaters").packArrayHeader(repeaters.size());
+            for (RailModelRepeater repeater : repeaters) {
+                repeater.toMessagePack(messagePacker);
             }
         }
     }
 
     @Inject(method = "messagePackLength", at = @At("TAIL"), cancellable = true, remap = false)
     private void messagePackLength(CallbackInfoReturnable<Integer> cir) {
-        if (modelPlacements.size() == 1 && firstPlacement().isLegacyCompatible()) {
+        if (repeaters.size() == 1 && firstRepeater().isLegacyCompatible()) {
             cir.setReturnValue(cir.getReturnValue() + 3);
         } else {
             cir.setReturnValue(cir.getReturnValue() + 4);
@@ -134,26 +135,36 @@ public abstract class RailMixin implements RailExtraSupplier {
 
     private static final int NTE_PACKET_EXTRA_MAGIC = 0x25141425;
     private static final int NTE_PACKET_V2_MAGIC = 0x25141426;
+    private static final int NTE_PACKET_V3_MAGIC = 0x25141427;
 
     @Inject(method = "<init>(Lnet/minecraft/network/FriendlyByteBuf;)V", at = @At("TAIL"))
     private void fromPacket(FriendlyByteBuf packet, CallbackInfo ci) {
         if (!Main.enableRegistry) return;
         if (packet.readableBytes() <= 4) return;
         int magic = packet.readInt();
-        if (magic == NTE_PACKET_V2_MAGIC) {
+        if (magic == NTE_PACKET_V3_MAGIC) {
             verticalCurveRadius = packet.readFloat();
+            isSecondaryDir = packet.readBoolean();
             int count = packet.readVarInt();
-            modelPlacements = new ArrayList<>(count);
+            repeaters = new ArrayList<>(count);
             for (int i = 0; i < count; i++) {
-                modelPlacements.add(RailModelPlacement.readPacket(packet));
+                repeaters.add(RailModelRepeater.readPacket(packet));
+            }
+        } else if (magic == NTE_PACKET_V2_MAGIC) {
+            verticalCurveRadius = packet.readFloat();
+            isSecondaryDir = false;
+            int count = packet.readVarInt();
+            repeaters = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) {
+                repeaters.add(RailModelRepeater.readPacket(packet));
             }
         } else if (magic == NTE_PACKET_EXTRA_MAGIC) {
-            RailModelPlacement legacy = new RailModelPlacement(
-                    packet.readUtf(),
-                    packet.readBoolean()
-            );
+            String modelKey = packet.readUtf();
+            isSecondaryDir = packet.readBoolean();
             verticalCurveRadius = packet.readFloat();
-            modelPlacements = new ArrayList<>(Collections.singletonList(legacy));
+            RailModelRepeater legacy = new RailModelRepeater();
+            legacy.modelKey = modelKey;
+            repeaters = new ArrayList<>(Collections.singletonList(legacy));
         } else {
             packet.readerIndex(packet.readerIndex() - 4);
         }
@@ -162,17 +173,18 @@ public abstract class RailMixin implements RailExtraSupplier {
     @Inject(method = "writePacket", at = @At("TAIL"))
     private void toPacket(FriendlyByteBuf packet, CallbackInfo ci) {
         if (!Main.enableRegistry) return;
-        if (modelPlacements.size() == 1 && firstPlacement().isLegacyCompatible()) {
+        if (repeaters.size() == 1 && firstRepeater().isLegacyCompatible()) {
             packet.writeInt(NTE_PACKET_EXTRA_MAGIC);
-            packet.writeUtf(firstPlacement().modelKey);
-            packet.writeBoolean(firstPlacement().reversed);
+            packet.writeUtf(firstRepeater().modelKey);
+            packet.writeBoolean(isSecondaryDir);
             packet.writeFloat(verticalCurveRadius);
         } else {
-            packet.writeInt(NTE_PACKET_V2_MAGIC);
+            packet.writeInt(NTE_PACKET_V3_MAGIC);
             packet.writeFloat(verticalCurveRadius);
-            packet.writeVarInt(modelPlacements.size());
-            for (RailModelPlacement placement : modelPlacements) {
-                placement.writePacket(packet);
+            packet.writeBoolean(isSecondaryDir);
+            packet.writeVarInt(repeaters.size());
+            for (RailModelRepeater repeater : repeaters) {
+                repeater.writePacket(packet);
             }
         }
     }

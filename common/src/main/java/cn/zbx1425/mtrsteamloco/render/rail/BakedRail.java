@@ -12,7 +12,7 @@ import java.util.*;
 
 public class BakedRail {
 
-    public record TransformOnBoundary(long blockPosHash, Matrix4f matrix) {}
+    public record TransformOnBoundary(long blockPosHash, boolean reversed, Matrix4f matrix) {}
 
     public Map<String, HashMap<Long, ArrayList<Matrix4f>>> interiorModelsByChunks = new HashMap<>();
     public Map<String, HashMap<Long, ArrayList<TransformOnBoundary>>> boundaryModelsByChunks = new HashMap<>();
@@ -27,21 +27,21 @@ public class BakedRail {
         BlockPos canonStart = isCanonical ? posStart : posEnd;
         BlockPos canonEnd = isCanonical ? posEnd : posStart;
 
-        List<RailModelPlacement> placements = ((RailExtraSupplier) rail).getModelPlacements();
+        boolean isSecondaryDir = ((RailExtraSupplier) rail).getIsSecondaryDir();
+        List<RailModelRepeater> repeaters = ((RailExtraSupplier) rail).getRepeaters();
         double railLength = rail.getLength();
 
-        for (RailModelPlacement placement : placements) {
-            String resolvedKey = RailRenderDispatcher.getModelKeyForRender(rail, placement.modelKey);
+        for (RailModelRepeater repeater : repeaters) {
+            String resolvedKey = RailRenderDispatcher.getModelKeyForRender(rail, repeater.modelKey);
             if (resolvedKey.equals("null") || resolvedKey.isEmpty()) continue;
 
             RailModelProperties props = RailModelRegistry.getProperty(resolvedKey);
-            float interval = placement.resolveInterval(props);
-            float yOffset = props.yOffset;
+            float interval = repeater.resolveInterval(props);
 
-            boolean effectiveReversed = isCanonical ? placement.reversed : !placement.reversed;
+            boolean effectiveReversed = isSecondaryDir ^ repeater.reversed;
 
             PositionResult posResult = computePositions(
-                    placement, railLength, interval, canonStart, canonEnd);
+                    repeater, railLength, interval, canonStart, canonEnd);
 
             HashMap<Long, ArrayList<Matrix4f>> chunks =
                     interiorModelsByChunks.computeIfAbsent(resolvedKey, k -> new HashMap<>());
@@ -50,15 +50,15 @@ public class BakedRail {
 
             for (double tCanon : posResult.interior) {
                 addInteriorMatrix(rail, tCanon, isCanonical, railLength,
-                        yOffset, interval, effectiveReversed, chunks);
+                    props, interval, effectiveReversed, chunks);
             }
             for (BoundaryPosition np : posResult.boundary) {
                 Matrix4f mat = computeMatrix(rail, np.tCanon, isCanonical, railLength,
-                        yOffset, interval, effectiveReversed);
+                    props, interval, effectiveReversed);
                 Vec3 pos = rail.getPosition(isCanonical ? np.tCanon : (railLength - np.tCanon));
                 long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
                 nChunks.computeIfAbsent(chunkId, ignored -> new ArrayList<>())
-                        .add(new TransformOnBoundary(np.blockPosHash, mat));
+                        .add(new TransformOnBoundary(np.blockPosHash, effectiveReversed, mat));
             }
         }
     }
@@ -67,11 +67,11 @@ public class BakedRail {
     private record PositionResult(List<Double> interior, List<BoundaryPosition> boundary) {}
 
     private void addInteriorMatrix(Rail rail, double tCanon, boolean isCanonical,
-                                   double railLength, float yOffset, float interval,
+                                   double railLength, RailModelProperties props, float interval,
                                    boolean effectiveReversed,
                                    HashMap<Long, ArrayList<Matrix4f>> chunks) {
         Matrix4f mat = computeMatrix(rail, tCanon, isCanonical, railLength,
-                yOffset, interval, effectiveReversed);
+            props, interval, effectiveReversed);
         double tLocal = isCanonical ? tCanon : (railLength - tCanon);
         Vec3 pos = rail.getPosition(tLocal);
         long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
@@ -79,7 +79,7 @@ public class BakedRail {
     }
 
     private Matrix4f computeMatrix(Rail rail, double tCanon, boolean isCanonical,
-                                   double railLength, float yOffset, float interval,
+                                   double railLength, RailModelProperties props, float interval,
                                    boolean effectiveReversed) {
         double tLocal = isCanonical ? tCanon : (railLength - tCanon);
         Vec3 pos = rail.getPosition(tLocal);
@@ -99,21 +99,21 @@ public class BakedRail {
         Vec3 pB = rail.getPosition(tB);
 
         float xc = (float) pos.x;
-        float yc = (float) pos.y + yOffset;
+        float yc = (float) pos.y + props.yOffset;
         float zc = (float) pos.z;
         float xf = xc + (float)(pB.x - pA.x);
-        float yf = yc + (float)(pB.y - pA.y);
+        float yf = yc + (props.tiltToGradient ? (float)(pB.y - pA.y) : 0);
         float zf = zc + (float)(pB.z - pA.z);
 
         return getLookAtMat(xc, yc, zc, xf, yf, zf, interval, effectiveReversed);
     }
 
-    private PositionResult computePositions(RailModelPlacement p, double L, float I,
+    private PositionResult computePositions(RailModelRepeater p, double L, float I,
                                             BlockPos canonStart, BlockPos canonEnd) {
         List<Double> interior = new ArrayList<>();
         List<BoundaryPosition> boundary = new ArrayList<>();
 
-        switch (p.placementMode) {
+        switch (p.repeaterMode) {
             case STRETCH_INTERVAL: {
                 if (L < I * 0.5) {
                     interior.add(L / 2);

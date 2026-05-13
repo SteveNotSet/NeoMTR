@@ -1,5 +1,6 @@
 package mtr.packet;
 
+import cn.zbx1425.mtrsteamloco.data.RailModelRepeater;
 import io.netty.buffer.Unpooled;
 import mtr.Keys;
 import mtr.MTR;
@@ -24,7 +25,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.scores.Score;
 import net.minecraft.world.scores.ScoreAccess;
 
 import java.util.*;
@@ -616,7 +616,7 @@ public class PacketTrainDataGuiServer extends PacketTrainDataBase {
 			minecraftServer.execute(() -> {
 				final RailwayData railwayData = RailwayData.getInstance(player.level());
 				if (railwayData != null) {
-					cn.zbx1425.mtrsteamloco.data.RailModelPlacement.undoPropagate(railwayData, player);
+					RailModelRepeater.undoPropagate(railwayData, player);
 				}
 			});
 			return;
@@ -624,7 +624,7 @@ public class PacketTrainDataGuiServer extends PacketTrainDataBase {
 
 		final BlockPos railStart = packet.readBlockPos();
 		final BlockPos railEnd = packet.readBlockPos();
-		final int placementIndex = packet.readVarInt();
+		final int repeaterIndex = packet.readVarInt();
 		final String modelKey = packet.readUtf();
 		final float interval = packet.readFloat();
 		final boolean reversed = packet.readBoolean();
@@ -635,9 +635,9 @@ public class PacketTrainDataGuiServer extends PacketTrainDataBase {
 			final RailwayData railwayData = RailwayData.getInstance(world);
 			if (railwayData == null) return;
 
-			cn.zbx1425.mtrsteamloco.data.RailModelPlacement
+			RailModelRepeater
 					.propagate(railwayData, player, railStart, railEnd,
-							placementIndex, modelKey, interval, reversed, offset);
+							repeaterIndex, modelKey, interval, reversed, offset);
 		});
 	}
 

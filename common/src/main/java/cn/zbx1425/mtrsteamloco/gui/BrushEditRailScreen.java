@@ -4,7 +4,6 @@ import cn.zbx1425.mtrsteamloco.data.*;
 import cn.zbx1425.mtrsteamloco.network.PacketUpdateHoldingItem;
 import cn.zbx1425.mtrsteamloco.network.PacketUpdateRail;
 import cn.zbx1425.mtrsteamloco.render.RailPicker;
-import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.datafixers.util.Pair;
 import mtr.client.IDrawing;
 import mtr.data.Rail;
@@ -267,7 +266,7 @@ public class BrushEditRailScreen extends SelectListScreen {
         }
         if (isBatchApply && !propertyUpdated) {
             // Right-click again to reverse the direction
-            pickedExtra.setRenderReversed(!pickedExtra.getRenderReversed());
+            pickedExtra.setIsSecondaryDir(!pickedExtra.getIsSecondaryDir());
         }
         PacketUpdateRail.sendUpdateC2S(pickedRail, pickedPosStart, pickedPosEnd);
     }

@@ -59,7 +59,7 @@ public class RenderTrainsMixin {
         MainClient.drawScheduler.commit(vertexConsumersProxy, MainClient.drawContext);
         vertexConsumersProxy.commit();
 
-        if (Minecraft.getInstance().player != null && (RailRenderDispatcher.isHoldingBrush || RailRenderDispatcher.isHoldingPlacementTool)) {
+        if (Minecraft.getInstance().player != null && (RailRenderDispatcher.isHoldingBrush || RailRenderDispatcher.isHoldingRailEditorVisual)) {
             RailPicker.pick();
             RailPicker.render(matrices, vertexConsumers);
         } else {

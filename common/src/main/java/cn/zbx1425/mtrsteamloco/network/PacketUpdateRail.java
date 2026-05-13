@@ -2,7 +2,7 @@ package cn.zbx1425.mtrsteamloco.network;
 
 import cn.zbx1425.mtrsteamloco.Main;
 import cn.zbx1425.mtrsteamloco.data.RailExtraSupplier;
-import cn.zbx1425.mtrsteamloco.data.RailModelPlacement;
+import cn.zbx1425.mtrsteamloco.data.RailModelRepeater;
 import cn.zbx1425.mtrsteamloco.mixin.RailwayDataAccessor;
 import io.netty.buffer.Unpooled;
 import mtr.Registry;
@@ -57,12 +57,12 @@ public class PacketUpdateRail {
             RailExtraSupplier extraForward = (RailExtraSupplier) railForward;
             RailExtraSupplier extraBackward = (RailExtraSupplier) railBackward;
 
-            java.util.List<RailModelPlacement> placements = new java.util.ArrayList<>();
-            for (RailModelPlacement p : extraTarget.getModelPlacements()) {
-                placements.add(p.copy());
+            java.util.List<RailModelRepeater> repeaters = new java.util.ArrayList<>();
+            for (RailModelRepeater p : extraTarget.getRepeaters()) {
+                repeaters.add(p.copy());
             }
-            extraForward.setModelPlacements(placements);
-            extraBackward.setModelPlacements(placements);
+            extraForward.setRepeaters(repeaters);
+            extraBackward.setRepeaters(repeaters);
             extraForward.setVerticalCurveRadius(extraTarget.getVerticalCurveRadius());
             extraBackward.setVerticalCurveRadius(extraTarget.getVerticalCurveRadius());
 
