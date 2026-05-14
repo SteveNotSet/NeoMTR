@@ -1,0 +1,7 @@
+{
+	"parent": "item/generated",
+	"textures": {
+		"layer0": "item/stick",
+		"layer1": "mtrsteamloco:item/rail_editor_geometry"
+	}
+}

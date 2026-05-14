@@ -1,0 +1,79 @@
+{
+  "catenary_long": {
+    "name": "Catenary(Long)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_long.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "catenary_short": {
+    "name": "Catenary(Short)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_short.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "catenary_long_counterweight": {
+    "name": "Catenary With Counterweight(Long)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_long_counterweight.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "catenary_short_counterweight": {
+    "name": "Catenary With Counterweight(Short)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_short_counterweight.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "catenary_long_counterweight_mirror": {
+    "name": "Catenary With Counterweight(Long & Mirror)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_long_counterweight_mirror.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "catenary_short_counterweight_mirror": {
+    "name": "Catenary With Counterweight(Short & Mirror)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_short_counterweight_mirror.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "catenary_long_top": {
+    "name": "Catenary(Long & Top)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_long_top.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "catenary_short_top": {
+    "name": "Catenary(Short & Top)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_short_top.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "catenary_both": {
+    "name": "Catenary(Both side)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_both.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "catenary_both_mirror": {
+    "name": "Catenary(Both side & Mirror)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_both_mirror.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "catenary_both_top": {
+    "name": "Catenary(Both side & Top)",
+    "model": "mtrsteamloco:rails/catenaries/catenary_both_top.obj",
+    "translation": [ 0, 5, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  }
+}
