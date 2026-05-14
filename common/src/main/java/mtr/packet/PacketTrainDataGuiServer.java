@@ -67,12 +67,6 @@ public class PacketTrainDataGuiServer extends PacketTrainDataBase {
 		Registry.sendToPlayer(player, PACKET_OPEN_TRAIN_SENSOR_SCREEN, packet);
 	}
 
-	public static void openFreeNodeScreenS2C(ServerPlayer player, BlockPos blockPos) {
-		final FriendlyByteBuf packet = new FriendlyByteBuf(Unpooled.buffer());
-		packet.writeBlockPos(blockPos);
-		Registry.sendToPlayer(player, PACKET_OPEN_FREE_NODE_SCREEN, packet);
-	}
-
 	public static void openLiftTrackFloorScreenS2C(ServerPlayer player, BlockPos blockPos) {
 		final FriendlyByteBuf packet = new FriendlyByteBuf(Unpooled.buffer());
 		packet.writeBlockPos(blockPos);

@@ -70,7 +70,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
 
         if (isSelectingModel) {
             String currentModelKey = "";
-            RailModelRepeater sel = getSelectedPlacement();
+            RailModelRepeater sel = getSelectedRepeater();
             if (sel != null) currentModelKey = sel.modelKey;
             String finalKey = currentModelKey;
             scrollList.visible = true;
@@ -107,7 +107,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
         return pickedPosStart.asLong() <= pickedPosEnd.asLong();
     }
 
-    private RailModelRepeater getSelectedPlacement() {
+    private RailModelRepeater getSelectedRepeater() {
         List<RailModelRepeater> repeaters = getRepeaters();
         if (selectedLayerIndex >= 0 && selectedLayerIndex < repeaters.size()) {
             return repeaters.get(selectedLayerIndex);
@@ -181,7 +181,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
                 }
         )), 0, height - SQUARE_SIZE * 2, leftPanelWidth);
 
-        RailModelRepeater selected = getSelectedPlacement();
+        RailModelRepeater selected = getSelectedRepeater();
         if (selected == null) {
             addRenderableWidget(new WidgetLabel(rightPanelX, SQUARE_SIZE * 2, rightPanelWidth,
                     Text.translatable("gui.mtr.rail_editor_visual.no_layers")));
@@ -516,7 +516,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
 
     @Override
     protected void onBtnClick(String btnKey) {
-        RailModelRepeater sel = getSelectedPlacement();
+        RailModelRepeater sel = getSelectedRepeater();
         if (sel != null) {
             sel.modelKey = btnKey;
             sendUpdate();
@@ -660,7 +660,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
             isSelectingModel = false;
             Minecraft.getInstance().tell(this::loadPage);
         } else {
-            RailModelRepeater sel = getSelectedPlacement();
+            RailModelRepeater sel = getSelectedRepeater();
             if (sel != null) lastEditedModelKey = sel.modelKey;
             this.minecraft.setScreen(null);
         }

@@ -233,7 +233,7 @@ public class RailModelRepeater {
             Rail nextRail = railwayData.getRail(exitNode, nextNode);
             if (nextRail == null) break;
 
-            int matchingIndex = findMatchingPlacement(nextRail, modelKey, interval);
+            int matchingIndex = findMatchingRepeater(nextRail, modelKey, interval);
             if (matchingIndex < 0) {
                 String msg = String.format("Propagation stopped at (%d, %d, %d). Exit offset: %.3f. Modified %d rail(s). (no matching repeater on next rail)",
                         exitNode.getX(), exitNode.getY(), exitNode.getZ(),
@@ -245,7 +245,7 @@ public class RailModelRepeater {
 
             snapshotRail(railwayData, snapshot, exitNode, nextNode);
             boolean nextIsCanonical = exitNode.asLong() <= nextNode.asLong();
-            setPlacementOffset(railwayData, exitNode, nextNode, matchingIndex,
+            setRepeaterOffset(railwayData, exitNode, nextNode, matchingIndex,
                     currentOffset, nextIsCanonical);
             modifiedRails.add(new BlockPos[]{exitNode, nextNode});
 
@@ -289,12 +289,12 @@ public class RailModelRepeater {
                                      BlockPos posA, BlockPos posB) {
         Rail railAB = railwayData.getRail(posA, posB);
         Rail railBA = railwayData.getRail(posB, posA);
-        List<RailModelRepeater> snapAB = copyPlacementList(railAB);
-        List<RailModelRepeater> snapBA = copyPlacementList(railBA);
+        List<RailModelRepeater> snapAB = copyRepeaterList(railAB);
+        List<RailModelRepeater> snapBA = copyRepeaterList(railBA);
         snapshot.add(new UndoEntry(posA, posB, snapAB, snapBA));
     }
 
-    private static List<RailModelRepeater> copyPlacementList(Rail rail) {
+    private static List<RailModelRepeater> copyRepeaterList(Rail rail) {
         if (rail == null) return Collections.emptyList();
         List<RailModelRepeater> result = new ArrayList<>();
         for (RailModelRepeater p : ((RailExtraSupplier) rail).getRepeaters()) {
@@ -303,7 +303,7 @@ public class RailModelRepeater {
         return result;
     }
 
-    private static int findMatchingPlacement(Rail rail, String modelKey, float interval) {
+    private static int findMatchingRepeater(Rail rail, String modelKey, float interval) {
         List<RailModelRepeater> repeaters = ((RailExtraSupplier) rail).getRepeaters();
         for (int i = 0; i < repeaters.size(); i++) {
             RailModelRepeater p = repeaters.get(i);
@@ -316,10 +316,10 @@ public class RailModelRepeater {
         return -1;
     }
 
-    private static void setPlacementOffset(RailwayData railwayData,
-                                           BlockPos posA, BlockPos posB,
-                                           int placementIndex,
-                                           float offset, boolean offsetFromStart) {
+    private static void setRepeaterOffset(RailwayData railwayData,
+                                          BlockPos posA, BlockPos posB,
+                                          int placementIndex,
+                                          float offset, boolean offsetFromStart) {
         Rail railAB = railwayData.getRail(posA, posB);
         Rail railBA = railwayData.getRail(posB, posA);
         if (railAB != null) {

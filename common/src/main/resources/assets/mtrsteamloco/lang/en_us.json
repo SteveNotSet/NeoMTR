@@ -107,5 +107,7 @@
     "gui.mtr.rail_editor_visual.selected_offset": "Position:",
 
     "item.mtrsteamloco.rail_editor_visual": "Rail Editor (Visual)",
-    "item.mtrsteamloco.rail_editor_geometry": "Rail Editor (Geometry)"
+    "item.mtrsteamloco.rail_editor_geometry": "Rail Editor (Geometry)",
+
+    "block.mtr.free_node": "Free Rail Node"
 }

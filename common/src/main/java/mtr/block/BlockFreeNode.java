@@ -62,17 +62,6 @@ public class BlockFreeNode extends BlockNode implements EntityBlockMapper {
 	}
 
 	@Override
-	public InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos, Player player, BlockHitResult blockHitResult) {
-		return IBlock.checkHoldingBrush(world, player, () -> {
-			final net.minecraft.world.level.block.entity.BlockEntity entity = world.getBlockEntity(pos);
-			if (entity instanceof TileEntityFreeNode) {
-				((TileEntityFreeNode) entity).syncData();
-				PacketTrainDataGuiServer.openFreeNodeScreenS2C((ServerPlayer) player, pos);
-			}
-		});
-	}
-
-	@Override
 	protected TransportMode getTransportModeForRemoval(Level world, BlockPos pos) {
 		return getEffectiveTransportMode(world, pos);
 	}

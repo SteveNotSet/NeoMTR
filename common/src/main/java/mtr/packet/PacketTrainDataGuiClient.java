@@ -104,18 +104,6 @@ public class PacketTrainDataGuiClient extends PacketTrainDataBase {
 		});
 	}
 
-	public static void openFreeNodeScreenS2C(Minecraft minecraftClient, FriendlyByteBuf packet) {
-		final BlockPos pos = packet.readBlockPos();
-		minecraftClient.execute(() -> {
-			if (minecraftClient.level != null && !(minecraftClient.screen instanceof FreeNodeScreen)) {
-				final BlockEntity entity = minecraftClient.level.getBlockEntity(pos);
-				if (entity instanceof mtr.block.BlockFreeNode.TileEntityFreeNode) {
-					UtilitiesClient.setScreen(minecraftClient, new FreeNodeScreen(pos));
-				}
-			}
-		});
-	}
-
 	public static void openLiftTrackFloorS2C(Minecraft minecraftClient, FriendlyByteBuf packet) {
 		final BlockPos pos = packet.readBlockPos();
 		minecraftClient.execute(() -> {

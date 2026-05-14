@@ -93,5 +93,7 @@
     "gui.mtr.rail_editor_visual.selected_offset": "放置位置:",
 
     "item.mtrsteamloco.rail_editor_visual": "轨道编辑工具 (外观)",
-    "item.mtrsteamloco.rail_editor_geometry": "轨道编辑工具 (几何)"
+    "item.mtrsteamloco.rail_editor_geometry": "轨道编辑工具 (几何)",
+
+    "block.mtr.free_node": "自由角度节点"
 }
