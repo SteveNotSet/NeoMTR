@@ -1,7 +1,7 @@
 package cn.zbx1425.mtrsteamloco.mixin;
 
 import cn.zbx1425.mtrsteamloco.Main;
-import cn.zbx1425.mtrsteamloco.gui.BrushEditRailScreen;
+import cn.zbx1425.mtrsteamloco.gui.RailEditorGeometryScreen;
 import cn.zbx1425.mtrsteamloco.gui.RailEditorVisualScreen;
 import cn.zbx1425.mtrsteamloco.network.PacketScreen;
 import mtr.item.ItemWithCreativeTabBase;
@@ -26,31 +26,7 @@ public abstract class ItemWithCreativeTabBaseMixin extends Item {
 
     @Override
     public InteractionResult useOn(UseOnContext context) {
-        if (this == mtr.Items.BRUSH.get()) {
-            Level level = context.getLevel();
-            BlockState blockState = level.getBlockState(context.getClickedPos());
-            if (blockState.getBlock() instanceof mtr.block.BlockNode) {
-                if (context.isSecondaryUseActive()) {
-                    if (level.isClientSide) {
-                        BrushEditRailScreen.acquirePickInfoWhenUse();
-                        return super.useOn(context);
-                    } else {
-                        PacketScreen.sendScreenBlockS2C((ServerPlayer) context.getPlayer(), "brush_edit_rail", BlockPos.ZERO);
-                    }
-                } else {
-                    if (level.isClientSide) {
-                        BrushEditRailScreen.acquirePickInfoWhenUse();
-                        CompoundTag railBrushProp = context.getPlayer().getMainHandItem().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
-                        BrushEditRailScreen.applyBrushToPickedRail(railBrushProp, true);
-                    } else {
-                        return super.useOn(context);
-                    }
-                }
-                return InteractionResult.SUCCESS;
-            } else {
-                return super.useOn(context);
-            }
-        } else if (((Item)(Object)this) == Main.RAIL_EDITOR_VISUAL.get()) {
+        if (((Item)(Object)this) == Main.RAIL_EDITOR_VISUAL.get()) {
             Level level = context.getLevel();
             BlockState blockState = level.getBlockState(context.getClickedPos());
             if (blockState.getBlock() instanceof mtr.block.BlockNode) {
@@ -66,6 +42,30 @@ public abstract class ItemWithCreativeTabBaseMixin extends Item {
                         RailEditorVisualScreen.acquirePickInfoWhenUse();
                         CompoundTag toolTag = context.getPlayer().getMainHandItem().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
                         RailEditorVisualScreen.batchApplyBrushTemplate(toolTag);
+                    } else {
+                        return super.useOn(context);
+                    }
+                }
+                return InteractionResult.SUCCESS;
+            } else {
+                return super.useOn(context);
+            }
+        } else if (((Item)(Object)this) == Main.RAIL_EDITOR_GEOMETRY.get()) {
+            Level level = context.getLevel();
+            BlockState blockState = level.getBlockState(context.getClickedPos());
+            if (blockState.getBlock() instanceof mtr.block.BlockNode) {
+                if (context.isSecondaryUseActive()) {
+                    if (level.isClientSide) {
+                        RailEditorGeometryScreen.acquirePickInfoWhenUse();
+                        return super.useOn(context);
+                    } else {
+                        PacketScreen.sendScreenBlockS2C((ServerPlayer) context.getPlayer(), "rail_editor_geometry", BlockPos.ZERO);
+                    }
+                } else {
+                    if (level.isClientSide) {
+                        RailEditorGeometryScreen.acquirePickInfoWhenUse();
+                        CompoundTag toolTag = context.getPlayer().getMainHandItem().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+                        RailEditorGeometryScreen.batchApply(toolTag);
                     } else {
                         return super.useOn(context);
                     }

@@ -130,7 +130,7 @@ public class InstancedRailChunk extends RailChunkBase {
 
         if (instanceBuf.size < 1) return;
         VertAttrState attrState = new VertAttrState().setOverlayUVNoOverlay();
-        if (!RailRenderDispatcher.isHoldingRailItem) attrState.setColor(-1);
+        if (!RailRenderDispatcher.isHoldingMtrRailRelated) attrState.setColor(-1);
         batchManager.enqueue(vertArrays, new EnqueueProp(attrState), shaderProp);
     }
 

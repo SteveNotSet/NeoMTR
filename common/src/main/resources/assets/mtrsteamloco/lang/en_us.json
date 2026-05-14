@@ -27,13 +27,24 @@
     "gui.mtrsteamloco.eye_candy.full_light": "Full Light",
     "gui.mtrsteamloco.eye_candy.tip_resource_pack": "You can import objects via Resource Pack. Click here for details.",
 
-    "gui.mtrsteamloco.brush_edit_rail.brush_hint": "This sets the function of the brush. Right-click on others to apply in batch.",
-    "gui.mtrsteamloco.brush_edit_rail.enable_model_key": "Apply Model",
-    "gui.mtrsteamloco.brush_edit_rail.enable_vertical_curve_radius": "Change Vertical Curve Radius",
-    "gui.mtrsteamloco.brush_edit_rail.vertical_curve_radius_irl_ref": "Real-life values for reference: 4000 (Lateral R<800), 3000 (R>=800) (天野ほか，図説鉄道工学P44)",
-    "gui.mtrsteamloco.brush_edit_rail.vertical_curve_radius_values": "A higher setting results in a smoother but steeper slope.\nMax radius possible for this rail: %sm\nMax pitch at the current radius setting: %s‰",
-    "gui.mtrsteamloco.brush_edit_rail.vertical_curve_radius_set_max": "Max (Default)",
-    "gui.mtrsteamloco.brush_edit_rail.vertical_curve_radius_set_none": "No curve",
+    "gui.mtrsteamloco.rail_editor_geometry.title": "Rail Editor (Geometry)",
+    "gui.mtrsteamloco.rail_editor_geometry.tab_node_pose": "Node Pose",
+    "gui.mtrsteamloco.rail_editor_geometry.tab_vertical_curve": "Vertical Curve",
+    "gui.mtrsteamloco.rail_editor_geometry.this_node": "This Node",
+    "gui.mtrsteamloco.rail_editor_geometry.other_node": "Other End",
+    "gui.mtrsteamloco.rail_editor_geometry.not_free_node": "Not a free node",
+    "gui.mtrsteamloco.rail_editor_geometry.reset_undetermined": "Reset",
+    "gui.mtrsteamloco.rail_editor_geometry.derive_angle": "Derive from Neighbor",
+    "gui.mtrsteamloco.rail_editor_geometry.vertical_curve_radius": "Vertical Curve Radius",
+    "gui.mtrsteamloco.rail_editor_geometry.radius_set_max": "Max (Default)",
+    "gui.mtrsteamloco.rail_editor_geometry.radius_set_none": "No Curve",
+    "gui.mtrsteamloco.rail_editor_geometry.radius_ref": "Reference: 4000 (R<800), 3000 (R>=800)",
+    "gui.mtrsteamloco.rail_editor_geometry.radius_values": "Max radius for this rail: %sm\nMax pitch: %s‰",
+    "gui.mtrsteamloco.rail_editor_geometry.batch_apply_section": "── Batch Apply ──",
+    "gui.mtrsteamloco.rail_editor_geometry.batch_apply_on": "Batch: ON",
+    "gui.mtrsteamloco.rail_editor_geometry.batch_apply_off": "Batch: OFF",
+    "gui.mtrsteamloco.rail_editor_geometry.save_to_tool": "Save to Tool",
+    "gui.mtrsteamloco.rail_editor_geometry.tool_value": "Tool: %s",
 
     "gui.mtrsteamloco.statistic_turnstile_visitor_new": "Welcome to %s! You are our visitor No.%d!",
     "gui.mtrsteamloco.statistic_turnstile_visitor_old": "Welcome back to %s! (You are our visitor No.%d)",
@@ -95,5 +106,6 @@
     "gui.mtr.rail_editor_visual.no_layers": "No repeater layers",
     "gui.mtr.rail_editor_visual.selected_offset": "Position:",
 
-    "item.mtrsteamloco.rail_editor_visual": "Rail Editor (Visual)"
+    "item.mtrsteamloco.rail_editor_visual": "Rail Editor (Visual)",
+    "item.mtrsteamloco.rail_editor_geometry": "Rail Editor (Geometry)"
 }

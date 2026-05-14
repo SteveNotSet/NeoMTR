@@ -92,7 +92,7 @@ public class MeshBuildingRailChunk extends RailChunkBase {
 
         if (vertArrays == null) return;
         VertAttrState attrState = new VertAttrState().setModelMatrix(shaderProp.viewMatrix).setOverlayUVNoOverlay();
-        if (!RailRenderDispatcher.isHoldingRailItem) attrState.setColor(-1);
+        if (!RailRenderDispatcher.isHoldingMtrRailRelated) attrState.setColor(-1);
         batchManager.enqueue(vertArrays, new EnqueueProp(attrState), ShaderProp.DEFAULT);
     }
 

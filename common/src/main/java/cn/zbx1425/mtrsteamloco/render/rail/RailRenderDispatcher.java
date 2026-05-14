@@ -41,10 +41,12 @@ public class RailRenderDispatcher {
 
     private final HashSet<Rail> currentFrameRails = new HashSet<>();
 
-    public static boolean isHoldingRailItem = false;
+    public static boolean isHoldingMtrRailRelated = false;
     public static boolean isHoldingBrush = false;
     public static boolean isHoldingRailEditorVisual = false;
-    public static boolean isHoldingRailItemOrBrush = false;
+    public static boolean isHoldingRailEditorGeometry = false;
+    public static boolean isHoldingNteRailRelated = false;
+    public static boolean isHoldingRailRelated = false;
     public static boolean isPreviewingModel = false;
 
     private BlockPos[] findRailPositions(Rail rail) {
@@ -158,15 +160,19 @@ public class RailRenderDispatcher {
         Screen currentScreen = Minecraft.getInstance().screen;
         isPreviewingModel = currentScreen instanceof SelectListScreen && ((SelectListScreen)currentScreen).isSelecting();
         if (!isPreviewingModel) {
-            isHoldingRailItem = RenderTrains.isHoldingRailRelated(Minecraft.getInstance().player);
+            isHoldingMtrRailRelated = RenderTrains.isHoldingRailRelated(Minecraft.getInstance().player);
             isHoldingBrush = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(mtr.Items.BRUSH.get()));
             isHoldingRailEditorVisual = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(Main.RAIL_EDITOR_VISUAL.get()));
-            isHoldingRailItemOrBrush = isHoldingRailItem || isHoldingBrush || isHoldingRailEditorVisual;
+            isHoldingRailEditorGeometry = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(Main.RAIL_EDITOR_GEOMETRY.get()));
+            isHoldingNteRailRelated = isHoldingBrush || isHoldingRailEditorVisual || isHoldingRailEditorGeometry;
+            isHoldingRailRelated = isHoldingMtrRailRelated || isHoldingNteRailRelated;
         } else {
-            isHoldingRailItem = false;
+            isHoldingMtrRailRelated = false;
             isHoldingBrush = false;
             isHoldingRailEditorVisual = false;
-            isHoldingRailItemOrBrush = false;
+            isHoldingRailEditorGeometry = false;
+            isHoldingNteRailRelated = false;
+            isHoldingRailRelated = false;
         }
     }
 
@@ -221,7 +227,7 @@ public class RailRenderDispatcher {
     }
 
     public void drawRailNodes(Level level, DrawScheduler drawScheduler, Matrix4f viewMatrix) {
-        if (isHoldingRailItemOrBrush) {
+        if (isHoldingRailRelated) {
             HashSet<BlockPos> drawnNodes = new HashSet<>();
             for (Map.Entry<BlockPos, Map<BlockPos, Rail>> entryStart : ClientData.RAILS.entrySet()) {
                 for (Map.Entry<BlockPos, Rail> entryEnd : entryStart.getValue().entrySet()) {
@@ -262,7 +268,7 @@ public class RailRenderDispatcher {
             }
         } else {
             if (customModelKey.equals("null")) {
-                return isHoldingRailItem ? "" : "null";
+                return isHoldingMtrRailRelated ? "" : "null";
             } else {
                 return customModelKey;
             }
@@ -272,7 +278,7 @@ public class RailRenderDispatcher {
     public boolean needsVanillaMTRRendering(Rail rail) {
         RailExtraSupplier railExtra = (RailExtraSupplier) rail;
         if (railExtra.getRepeaters().isEmpty()) {
-            return isHoldingRailItem;
+            return isHoldingMtrRailRelated;
         } else if (railExtra.getRepeaters().size() == 1) {
             if (railExtra.getRepeaters().getFirst().modelKey.isEmpty()) {
                 return rail.transportMode != TransportMode.TRAIN;
