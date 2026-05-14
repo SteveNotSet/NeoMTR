@@ -1,5 +1,6 @@
 package cn.zbx1425.mtrsteamloco.gui;
 
+import cn.zbx1425.mtrsteamloco.Main;
 import cn.zbx1425.mtrsteamloco.data.*;
 import cn.zbx1425.mtrsteamloco.network.PacketUpdateHoldingItem;
 import cn.zbx1425.mtrsteamloco.network.PacketUpdateRail;
@@ -23,6 +24,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 
@@ -80,13 +82,13 @@ public class RailEditorVisualScreen extends SelectListScreen {
         loadEditorPage();
     }
 
-    private List<RailModelRepeater> getPlacements() {
-        if (pickedRail == null) return Collections.emptyList();
+    private List<RailModelRepeater> getRepeaters() {
+        if (pickedRail == null) return new ArrayList<>();
         return ((RailExtraSupplier) pickedRail).getRepeaters();
     }
 
     private void autoSelectLayer() {
-        List<RailModelRepeater> repeaters = getPlacements();
+        List<RailModelRepeater> repeaters = getRepeaters();
         if (repeaters.isEmpty()) return;
         if (lastEditedModelKey.isEmpty()) {
             selectedLayerIndex = repeaters.size() - 1;
@@ -106,7 +108,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
     }
 
     private RailModelRepeater getSelectedPlacement() {
-        List<RailModelRepeater> repeaters = getPlacements();
+        List<RailModelRepeater> repeaters = getRepeaters();
         if (selectedLayerIndex >= 0 && selectedLayerIndex < repeaters.size()) {
             return repeaters.get(selectedLayerIndex);
         }
@@ -114,11 +116,11 @@ public class RailEditorVisualScreen extends SelectListScreen {
     }
 
     private void loadEditorPage() {
-        List<RailModelRepeater> repeaters = getPlacements();
+        List<RailModelRepeater> repeaters = getRepeaters();
 
-        int leftPanelWidth = Math.min(width / 3, 140);
-        int rightPanelX = leftPanelWidth + SQUARE_SIZE;
-        int rightPanelWidth = Math.min(width - rightPanelX - SQUARE_SIZE, 380);
+        int leftPanelWidth = Mth.clamp(width / 3, 140, 220);
+        int rightPanelWidth = Math.min(width - (leftPanelWidth + SQUARE_SIZE) - SQUARE_SIZE, 380);
+        int rightPanelX = leftPanelWidth + (width - leftPanelWidth - rightPanelWidth) / 2;
 
         layerScrollList.children.clear();
         IDrawing.setPositionAndWidth(layerScrollList, 0, SQUARE_SIZE, leftPanelWidth);
@@ -155,9 +157,9 @@ public class RailEditorVisualScreen extends SelectListScreen {
             Button deleteBtn = UtilitiesClient.newButton(
                     Text.literal("x"),
                     sender -> {
-                        getPlacements().remove(layerIdx);
-                        if (selectedLayerIndex >= getPlacements().size()) {
-                            selectedLayerIndex = Math.max(0, getPlacements().size() - 1);
+                        getRepeaters().remove(layerIdx);
+                        if (selectedLayerIndex >= getRepeaters().size()) {
+                            selectedLayerIndex = Math.max(0, getRepeaters().size() - 1);
                         }
                         sendUpdate();
                         Minecraft.getInstance().tell(this::loadPage);
@@ -172,15 +174,12 @@ public class RailEditorVisualScreen extends SelectListScreen {
         IDrawing.setPositionAndWidth(addRenderableWidget(UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.rail_editor_visual.add_layer"),
                 sender -> {
-                    getPlacements().add(new RailModelRepeater());
-                    selectedLayerIndex = getPlacements().size() - 1;
+                    getRepeaters().add(new RailModelRepeater());
+                    selectedLayerIndex = getRepeaters().size() - 1;
                     sendUpdate();
                     Minecraft.getInstance().tell(this::loadPage);
                 }
         )), 0, height - SQUARE_SIZE * 2, leftPanelWidth);
-
-        addRenderableWidget(new WidgetLabel(0, 2, leftPanelWidth,
-                Text.translatable("gui.mtr.rail_editor_visual.title")));
 
         RailModelRepeater selected = getSelectedPlacement();
         if (selected == null) {
@@ -248,6 +247,8 @@ public class RailEditorVisualScreen extends SelectListScreen {
         IDrawing.setPositionAndWidth(addRenderableWidget(intervalField), x, y, halfW);
         intervalField.active = selected.repeaterMode != RepeaterMode.MANUAL;
         y += SQUARE_SIZE + 4;
+
+        y += 6;
 
         // -- Mode selector --
         int modeButtonWidth = w / 3;
@@ -539,9 +540,9 @@ public class RailEditorVisualScreen extends SelectListScreen {
     private void saveToToolNbt() {
         if (Minecraft.getInstance().player == null) return;
         ItemStack toolItem = Minecraft.getInstance().player.getMainHandItem();
-        if (!toolItem.is(mtr.Items.RAIL_EDITOR_VISUAL.get())) return;
+        if (!toolItem.is(Main.RAIL_EDITOR_VISUAL.get())) return;
         CompoundTag tag = toolItem.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
-        writeRepeatersToNbt(tag, getPlacements());
+        writeRepeatersToNbt(tag, getRepeaters());
         toolItem.set(DataComponents.CUSTOM_DATA, CustomData.of(tag));
         PacketUpdateHoldingItem.sendUpdateC2S();
     }
@@ -564,7 +565,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
         if (toolTag == null || pickedRail == null) return;
         RailExtraSupplier extra = (RailExtraSupplier) pickedRail;
 
-        List<RailModelRepeater> template = readPlacementsFromNbt(toolTag);
+        List<RailModelRepeater> template = readRepeatersFromNbt(toolTag);
         if (template.isEmpty()) {
             extra.setIsSecondaryDir(!extra.getIsSecondaryDir());
         } else {
@@ -625,7 +626,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
         }
     }
 
-    static List<RailModelRepeater> readPlacementsFromNbt(CompoundTag tag) {
+    static List<RailModelRepeater> readRepeatersFromNbt(CompoundTag tag) {
         int count = tag.getInt("RepeaterCount");
         List<RailModelRepeater> result = new ArrayList<>();
         for (int i = 0; i < count; i++) {

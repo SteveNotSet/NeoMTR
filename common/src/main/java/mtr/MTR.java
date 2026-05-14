@@ -45,7 +45,6 @@ public class MTR implements IPacket {
 			BiConsumer<String, SoundEvent> registerSoundEvent
 	) {
 		registerItem.accept("brush", Items.BRUSH);
-		registerItem.accept("rail_editor_visual", Items.RAIL_EDITOR_VISUAL);
 		registerItem.accept("escalator", Items.ESCALATOR);
 		registerItem.accept("lift_buttons_link_connector", Items.LIFT_BUTTONS_LINK_CONNECTOR);
 		registerItem.accept("lift_buttons_link_remover", Items.LIFT_BUTTONS_LINK_REMOVER);

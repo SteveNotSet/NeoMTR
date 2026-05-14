@@ -44,3 +44,5 @@ version.js
 .architectury-transformer/
 
 /build.properties
+
+.cursor/rules/

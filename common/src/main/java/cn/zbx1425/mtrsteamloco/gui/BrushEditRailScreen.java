@@ -99,7 +99,8 @@ public class BrushEditRailScreen extends SelectListScreen {
                 Text.translatable("gui.mtrsteamloco.brush_edit_rail.brush_hint")));
 
         boolean enableModelKey = brushTag != null && brushTag.contains("ModelKey");
-        String modelKey = ((RailExtraSupplier)pickedRail).getModelKey();
+        String modelKey = ((RailExtraSupplier)pickedRail).getRepeaters().isEmpty()
+            ? null : ((RailExtraSupplier)pickedRail).getRepeaters().getFirst().modelKey;
         addRenderableWidget(new WidgetBetterCheckbox(SQUARE_SIZE, SQUARE_SIZE * 2, COLUMN_WIDTH * 2, SQUARE_SIZE,
                 Text.translatable("gui.mtrsteamloco.brush_edit_rail.enable_model_key"),
                 checked -> {
@@ -255,8 +256,9 @@ public class BrushEditRailScreen extends SelectListScreen {
         RailExtraSupplier pickedExtra = (RailExtraSupplier) pickedRail;
         boolean propertyUpdated = false;
         if (railBrushProp.contains("ModelKey") &&
-                !railBrushProp.getString("ModelKey").equals(pickedExtra.getModelKey())) {
-            pickedExtra.setModelKey(railBrushProp.getString("ModelKey"));
+                !railBrushProp.getString("ModelKey").equals(pickedExtra.getRepeaters().isEmpty()
+                    ? null : pickedExtra.getRepeaters().getFirst().modelKey)) {
+//            pickedExtra.setModelKey(railBrushProp.getString("ModelKey"));
             propertyUpdated = true;
         }
         if (railBrushProp.contains("VerticalCurveRadius") &&

@@ -5,6 +5,7 @@ import cn.zbx1425.mtrsteamloco.block.BlockOneWayGate;
 import cn.zbx1425.mtrsteamloco.network.*;
 import com.google.gson.JsonParser;
 import mtr.CreativeModeTabs;
+import mtr.Items;
 import mtr.Registry;
 import mtr.RegistryObject;
 import mtr.item.ItemBridgeCreator;
@@ -57,6 +58,8 @@ public class Main {
 	public static final RegistryObject<Block> BLOCK_ONE_WAY_GATE = new RegistryObject<>(BlockOneWayGate::new);
 
 	public static final RegistryObject<ItemWithCreativeTabBase> BRIDGE_CREATOR_1 = new RegistryObject<>(() -> new ItemBridgeCreator(1));
+	public static final RegistryObject<ItemWithCreativeTabBase> RAIL_EDITOR_VISUAL = new RegistryObject<>(() ->
+		new ItemWithCreativeTabBase(CreativeModeTabs.CORE, properties -> properties.stacksTo(1)));
 
 	public static final SoundEvent SOUND_EVENT_BELL = RegistryUtilities.createSoundEvent(Main.id("bell"));
 
@@ -74,9 +77,11 @@ public class Main {
 			registries.registerBlockEntityType("eye_candy", BLOCK_ENTITY_TYPE_EYE_CANDY);
 			registries.registerBlockAndItem("one_way_gate_1", BLOCK_ONE_WAY_GATE, CreativeModeTabs.RAILWAY_FACILITIES);
 			registries.registerItem("bridge_creator_1", BRIDGE_CREATOR_1);
+			registries.registerItem("rail_editor_visual", RAIL_EDITOR_VISUAL);
 			registries.registerSoundEvent("bell", SOUND_EVENT_BELL);
 			PARTICLE_STEAM_SMOKE = registries.createParticleType(true);
 			registries.registerParticleType("steam_smoke", PARTICLE_STEAM_SMOKE);
+
 
 			mtr.Registry.registerNetworkReceiver(PacketUpdateBlockEntity.PACKET_UPDATE_BLOCK_ENTITY,
 					PacketUpdateBlockEntity::receiveUpdateC2S);

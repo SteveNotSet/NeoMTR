@@ -155,8 +155,8 @@ public class RailModelRepeater {
     private static final Map<UUID, List<UndoEntry>> undoSnapshots = new HashMap<>();
 
     private record UndoEntry(BlockPos posA, BlockPos posB,
-                             List<RailModelRepeater> oldPlacementsAB,
-                             List<RailModelRepeater> oldPlacementsBA) {}
+                             List<RailModelRepeater> oldRepeatersAB,
+                             List<RailModelRepeater> oldRepeatersBA) {}
 
     /**
      * Server-side propagation: starting from the rail (railStart -> railEnd),
@@ -271,11 +271,11 @@ public class RailModelRepeater {
         for (UndoEntry entry : snapshot) {
             Rail railAB = railwayData.getRail(entry.posA, entry.posB);
             if (railAB != null) {
-                ((RailExtraSupplier) railAB).setRepeaters(entry.oldPlacementsAB);
+                ((RailExtraSupplier) railAB).setRepeaters(entry.oldRepeatersAB);
             }
             Rail railBA = railwayData.getRail(entry.posB, entry.posA);
             if (railBA != null) {
-                ((RailExtraSupplier) railBA).setRepeaters(entry.oldPlacementsBA);
+                ((RailExtraSupplier) railBA).setRepeaters(entry.oldRepeatersBA);
             }
             modifiedRails.add(new BlockPos[]{entry.posA, entry.posB});
         }

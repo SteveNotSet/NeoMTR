@@ -66,8 +66,7 @@ public class MeshBuildingRailChunk extends RailChunkBase {
                 combinedModel.appendTransformed(railModel, pieceMat, color, light);
             }
             for (BakedRail.TransformOnBoundary bt : transforms.boundaryTransforms()) {
-                long dedupKey = bt.blockPosHash() ^ (bt.reversed() ? Long.MIN_VALUE : 0);
-                if (!seenBoundaryKeys.add(dedupKey)) continue;
+                if (!seenBoundaryKeys.add(bt.dedupHash())) continue;
                 Matrix4f pieceMat = bt.matrix();
                 final Vector3f lightPos = pieceMat.getTranslationPart();
                 yMin = Math.min(yMin, lightPos.y());

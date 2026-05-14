@@ -57,5 +57,29 @@
     "gui.mtrsteamloco.config.client.preloadbbmodel.description": "这项优化提升使用 BBMODEL 的自定义列车的渲染效率，对于精细的模型尤其有提升。\n但是它增加内存用量，且据报在一些设备上优化效果不佳或甚至负优化。",
     "gui.mtrsteamloco.config.client.scriptdebugoverlay": "显示 JS 调试信息",
     "gui.mtrsteamloco.mtr_version_low": "请更新 MTR: NTE %s 需要 MTR %s 及以上版本, 而现安装的 %s 版本较低。",
-    "commands.mtrsteamloco.virtdrive.not_riding": "您不在列车上。请先乘坐列车再运行此命令。"
+    "commands.mtrsteamloco.virtdrive.not_riding": "您不在列车上。请先乘坐列车再运行此命令。",
+
+    "gui.mtr.rail_editor_visual.add_layer": "+ 添加物件",
+    "gui.mtr.rail_editor_visual.select_model": "选择模型",
+    "gui.mtr.rail_editor_visual.mode": "模式",
+    "gui.mtr.rail_editor_visual.interval": "覆写放置间距",
+    "gui.mtr.rail_editor_visual.offset": "偏移量",
+    "gui.mtr.rail_editor_visual.offset_direction": "偏移量方向",
+    "gui.mtr.rail_editor_visual.from_this_node": "从此端算起",
+    "gui.mtr.rail_editor_visual.from_other_node": "从另一端算起",
+    "gui.mtr.rail_editor_visual.reversed": "反转",
+    "gui.mtr.rail_editor_visual.direction": "物体方向",
+    "gui.mtr.rail_editor_visual.facing_away": "默认",
+    "gui.mtr.rail_editor_visual.facing_here": "反转",
+    "gui.mtr.rail_editor_visual.propagate": "传播",
+    "gui.mtr.rail_editor_visual.undo_propagate": "撤销",
+    "gui.mtr.rail_editor_visual.continue_propagate": "继续",
+    "gui.mtr.rail_editor_visual.save_template": "保存为模板",
+    "gui.mtr.rail_editor_visual.stretch_interval": "拉伸间距",
+    "gui.mtr.rail_editor_visual.fixed_interval": "固定间距",
+    "gui.mtr.rail_editor_visual.manual": "手动设置",
+    "gui.mtr.rail_editor_visual.no_layers": "没有物件",
+    "gui.mtr.rail_editor_visual.selected_offset": "放置位置:",
+
+    "item.mtrsteamloco.rail_editor_visual": "轨道编辑工具 (外观)"
 }

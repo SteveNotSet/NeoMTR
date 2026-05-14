@@ -1,6 +1,7 @@
 package cn.zbx1425.mtrsteamloco.render.rail;
 
 import cn.zbx1425.mtrsteamloco.ClientConfig;
+import cn.zbx1425.mtrsteamloco.Main;
 import cn.zbx1425.mtrsteamloco.data.RailExtraSupplier;
 import cn.zbx1425.mtrsteamloco.data.RailModelRegistry;
 import cn.zbx1425.mtrsteamloco.gui.SelectListScreen;
@@ -121,7 +122,7 @@ public class RailRenderDispatcher {
     }
 
     public boolean registerRail(Rail rail) {
-        if (getModelKeyForRender(rail).isEmpty() || rail.railType == RailType.NONE) return false;
+        if (rail.railType == RailType.NONE || needsVanillaMTRRendering(rail)) return false;
         currentFrameRails.add(rail);
         return true;
     }
@@ -159,7 +160,7 @@ public class RailRenderDispatcher {
         if (!isPreviewingModel) {
             isHoldingRailItem = RenderTrains.isHoldingRailRelated(Minecraft.getInstance().player);
             isHoldingBrush = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(mtr.Items.BRUSH.get()));
-            isHoldingRailEditorVisual = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(mtr.Items.RAIL_EDITOR_VISUAL.get()));
+            isHoldingRailEditorVisual = Utilities.isHolding(Minecraft.getInstance().player, (item) -> item.equals(Main.RAIL_EDITOR_VISUAL.get()));
             isHoldingRailItemOrBrush = isHoldingRailItem || isHoldingBrush || isHoldingRailEditorVisual;
         } else {
             isHoldingRailItem = false;
@@ -248,10 +249,6 @@ public class RailRenderDispatcher {
     }
 
     // "null": hidden, "": use MTR's default pipeline
-    public static String getModelKeyForRender(Rail rail) {
-        return getModelKeyForRender(rail, ((RailExtraSupplier) rail).getModelKey());
-    }
-
     public static String getModelKeyForRender(Rail rail, String customModelKey) {
         if (customModelKey.equals("") || !RailModelRegistry.elements.containsKey(customModelKey)) {
             if (rail.transportMode == TransportMode.TRAIN) {
@@ -270,6 +267,18 @@ public class RailRenderDispatcher {
                 return customModelKey;
             }
         }
+    }
+
+    public boolean needsVanillaMTRRendering(Rail rail) {
+        RailExtraSupplier railExtra = (RailExtraSupplier) rail;
+        if (railExtra.getRepeaters().isEmpty()) {
+            return isHoldingRailItem;
+        } else if (railExtra.getRepeaters().size() == 1) {
+            if (railExtra.getRepeaters().getFirst().modelKey.isEmpty()) {
+                return rail.transportMode != TransportMode.TRAIN;
+            }
+        }
+        return false;
     }
 
     public void drawBoundingBoxes(PoseStack matrixStack, VertexConsumer buffer) {

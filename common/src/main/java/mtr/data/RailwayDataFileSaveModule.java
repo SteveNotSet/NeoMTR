@@ -239,18 +239,18 @@ public class RailwayDataFileSaveModule extends RailwayDataModuleBase {
 								} catch (Exception e) {
 									MTR.LOGGER.error("", e);
 								}
-							} catch (IOException e) {
+							} catch (Exception e) {
 								MTR.LOGGER.error("", e);
 							}
-						} catch (IOException e) {
+						} catch (Exception e) {
 							MTR.LOGGER.error("", e);
 						}
 					});
-				} catch (IOException e) {
+				} catch (Exception e) {
 					MTR.LOGGER.error("", e);
 				}
 			});
-		} catch (IOException e) {
+		} catch (Exception e) {
 			MTR.LOGGER.error("", e);
 		}
 	}

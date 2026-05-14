@@ -34,23 +34,6 @@ public abstract class RailMixin implements RailExtraSupplier {
     private float verticalCurveRadius = 0f;
     private boolean isSecondaryDir = false;
 
-    private RailModelRepeater firstRepeater() {
-        if (repeaters.isEmpty()) {
-            repeaters.add(new RailModelRepeater());
-        }
-        return repeaters.get(0);
-    }
-
-    @Override
-    public String getModelKey() {
-        return firstRepeater().modelKey;
-    }
-
-    @Override
-    public void setModelKey(String key) {
-        firstRepeater().modelKey = key;
-    }
-
     @Override
     public boolean getIsSecondaryDir() {
         return isSecondaryDir;
@@ -111,11 +94,12 @@ public abstract class RailMixin implements RailExtraSupplier {
     private void toMessagePack(MessagePacker messagePacker, CallbackInfo ci) throws IOException {
         messagePacker.packString("vertical_curve_radius").packFloat(verticalCurveRadius);
 
-        if (repeaters.size() == 1 && firstRepeater().isLegacyCompatible()) {
-            messagePacker.packString("model_key").packString(firstRepeater().modelKey);
+        if (repeaters.size() == 1 && repeaters.getFirst().isLegacyCompatible()) {
+            messagePacker.packString("model_key").packString(repeaters.getFirst().modelKey);
             messagePacker.packString("is_secondary_dir").packBoolean(isSecondaryDir);
         } else {
-            messagePacker.packString("model_key").packString(firstRepeater().modelKey);
+            messagePacker.packString("model_key").packString(repeaters.isEmpty()
+                ? "null" : repeaters.getFirst().modelKey); // Unused
             messagePacker.packString("is_secondary_dir").packBoolean(isSecondaryDir);
             messagePacker.packString("repeaters").packArrayHeader(repeaters.size());
             for (RailModelRepeater repeater : repeaters) {
@@ -126,80 +110,47 @@ public abstract class RailMixin implements RailExtraSupplier {
 
     @Inject(method = "messagePackLength", at = @At("TAIL"), cancellable = true, remap = false)
     private void messagePackLength(CallbackInfoReturnable<Integer> cir) {
-        if (repeaters.size() == 1 && firstRepeater().isLegacyCompatible()) {
+        if (repeaters.size() == 1 && repeaters.getFirst().isLegacyCompatible()) {
             cir.setReturnValue(cir.getReturnValue() + 3);
         } else {
             cir.setReturnValue(cir.getReturnValue() + 4);
         }
     }
 
-    private static final int NTE_PACKET_EXTRA_MAGIC = 0x25141425;
-    private static final int NTE_PACKET_V2_MAGIC = 0x25141426;
-    private static final int NTE_PACKET_V3_MAGIC = 0x25141427;
-
     @Inject(method = "<init>(Lnet/minecraft/network/FriendlyByteBuf;)V", at = @At("TAIL"))
     private void fromPacket(FriendlyByteBuf packet, CallbackInfo ci) {
         if (!Main.enableRegistry) return;
-        if (packet.readableBytes() <= 4) return;
-        int magic = packet.readInt();
-        if (magic == NTE_PACKET_V3_MAGIC) {
-            verticalCurveRadius = packet.readFloat();
-            isSecondaryDir = packet.readBoolean();
-            int count = packet.readVarInt();
-            repeaters = new ArrayList<>(count);
-            for (int i = 0; i < count; i++) {
-                repeaters.add(RailModelRepeater.readPacket(packet));
-            }
-        } else if (magic == NTE_PACKET_V2_MAGIC) {
-            verticalCurveRadius = packet.readFloat();
-            isSecondaryDir = false;
-            int count = packet.readVarInt();
-            repeaters = new ArrayList<>(count);
-            for (int i = 0; i < count; i++) {
-                repeaters.add(RailModelRepeater.readPacket(packet));
-            }
-        } else if (magic == NTE_PACKET_EXTRA_MAGIC) {
-            String modelKey = packet.readUtf();
-            isSecondaryDir = packet.readBoolean();
-            verticalCurveRadius = packet.readFloat();
-            RailModelRepeater legacy = new RailModelRepeater();
-            legacy.modelKey = modelKey;
-            repeaters = new ArrayList<>(Collections.singletonList(legacy));
-        } else {
-            packet.readerIndex(packet.readerIndex() - 4);
+        verticalCurveRadius = packet.readFloat();
+        isSecondaryDir = packet.readBoolean();
+        int count = packet.readVarInt();
+        repeaters = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            repeaters.add(RailModelRepeater.readPacket(packet));
         }
     }
 
     @Inject(method = "writePacket", at = @At("TAIL"))
     private void toPacket(FriendlyByteBuf packet, CallbackInfo ci) {
         if (!Main.enableRegistry) return;
-        if (repeaters.size() == 1 && firstRepeater().isLegacyCompatible()) {
-            packet.writeInt(NTE_PACKET_EXTRA_MAGIC);
-            packet.writeUtf(firstRepeater().modelKey);
-            packet.writeBoolean(isSecondaryDir);
-            packet.writeFloat(verticalCurveRadius);
-        } else {
-            packet.writeInt(NTE_PACKET_V3_MAGIC);
-            packet.writeFloat(verticalCurveRadius);
-            packet.writeBoolean(isSecondaryDir);
-            packet.writeVarInt(repeaters.size());
-            for (RailModelRepeater repeater : repeaters) {
-                repeater.writePacket(packet);
-            }
+        packet.writeFloat(verticalCurveRadius);
+        packet.writeBoolean(isSecondaryDir);
+        packet.writeVarInt(repeaters.size());
+        for (RailModelRepeater repeater : repeaters) {
+            repeater.writePacket(packet);
         }
     }
 
-    @Redirect(method = "renderSegment", remap = false, at = @At(value = "INVOKE", target = "Ljava/lang/Math;round(D)J"))
-    private long redirectRenderSegmentRound(double r) {
-        if (ClientConfig.getRailRenderLevel() < 2) return Math.round(r);
-
-        Rail instance = (Rail)(Object)this;
-        if (instance.railType == RailType.NONE) {
-            return Math.round(r);
-        } else {
-            return Math.round(r / RailModelRegistry.getProperty(RailRenderDispatcher.getModelKeyForRender(instance)).repeatInterval);
-        }
-    }
+//    @Redirect(method = "renderSegment", remap = false, at = @At(value = "INVOKE", target = "Ljava/lang/Math;round(D)J"))
+//    private long redirectRenderSegmentRound(double r) {
+//        if (ClientConfig.getRailRenderLevel() < 2) return Math.round(r);
+//
+//        Rail instance = (Rail)(Object)this;
+//        if (instance.railType == RailType.NONE) {
+//            return Math.round(r);
+//        } else {
+//            return Math.round(r / RailModelRegistry.getProperty(RailRenderDispatcher.getModelKeyForRender(instance)).repeatInterval);
+//        }
+//    }
 
     @Shadow(remap = false) @Final private int yStart, yEnd;
 

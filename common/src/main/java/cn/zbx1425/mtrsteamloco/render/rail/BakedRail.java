@@ -12,7 +12,7 @@ import java.util.*;
 
 public class BakedRail {
 
-    public record TransformOnBoundary(long blockPosHash, boolean reversed, Matrix4f matrix) {}
+    public record TransformOnBoundary(long dedupHash, Matrix4f matrix) {}
 
     public Map<String, HashMap<Long, ArrayList<Matrix4f>>> interiorModelsByChunks = new HashMap<>();
     public Map<String, HashMap<Long, ArrayList<TransformOnBoundary>>> boundaryModelsByChunks = new HashMap<>();
@@ -58,7 +58,8 @@ public class BakedRail {
                 Vec3 pos = rail.getPosition(isCanonical ? np.tCanon : (railLength - np.tCanon));
                 long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
                 nChunks.computeIfAbsent(chunkId, ignored -> new ArrayList<>())
-                        .add(new TransformOnBoundary(np.blockPosHash, effectiveReversed, mat));
+                        .add(new TransformOnBoundary(
+                            np.blockPosHash ^ (repeater.reversed ? Long.MIN_VALUE : 0), mat));
             }
         }
     }

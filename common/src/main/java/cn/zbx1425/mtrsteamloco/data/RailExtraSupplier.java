@@ -7,13 +7,6 @@ import java.util.List;
 
 public interface RailExtraSupplier {
 
-    // "": default, "null": hidden
-    @Deprecated()
-    String getModelKey();
-
-    @Deprecated()
-    void setModelKey(String key);
-
     boolean getIsSecondaryDir();
 
     void setIsSecondaryDir(boolean value);

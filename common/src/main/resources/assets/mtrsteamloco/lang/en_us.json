@@ -95,5 +95,5 @@
     "gui.mtr.rail_editor_visual.no_layers": "No repeater layers",
     "gui.mtr.rail_editor_visual.selected_offset": "Position:",
 
-    "item.mtr.rail_editor_visual": "Rail Editor (Visual)"
+    "item.mtrsteamloco.rail_editor_visual": "Rail Editor (Visual)"
 }

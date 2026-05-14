@@ -1,5 +1,6 @@
 package cn.zbx1425.mtrsteamloco.mixin;
 
+import cn.zbx1425.mtrsteamloco.Main;
 import cn.zbx1425.mtrsteamloco.gui.BrushEditRailScreen;
 import cn.zbx1425.mtrsteamloco.gui.RailEditorVisualScreen;
 import cn.zbx1425.mtrsteamloco.network.PacketScreen;
@@ -49,7 +50,7 @@ public abstract class ItemWithCreativeTabBaseMixin extends Item {
             } else {
                 return super.useOn(context);
             }
-        } else if (this == mtr.Items.RAIL_EDITOR_VISUAL.get()) {
+        } else if (((Item)(Object)this) == Main.RAIL_EDITOR_VISUAL.get()) {
             Level level = context.getLevel();
             BlockState blockState = level.getBlockState(context.getClickedPos());
             if (blockState.getBlock() instanceof mtr.block.BlockNode) {
