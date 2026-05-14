@@ -43,6 +43,15 @@ public class BakedRail {
             PositionResult posResult = computePositions(
                     repeater, railLength, interval, canonStart, canonEnd);
 
+            double chordHalfSpan = switch (repeater.repeaterMode) {
+                case STRETCH_INTERVAL -> {
+                    int N = Math.max(2, Math.round((float) (railLength / interval)) + 1);
+                    yield (railLength / (N - 1)) / 2.0;
+                }
+                case FIXED_INTERVAL -> interval / 2.0;
+                case MANUAL -> 0;
+            };
+
             HashMap<Long, ArrayList<Matrix4f>> chunks =
                     interiorModelsByChunks.computeIfAbsent(resolvedKey, k -> new HashMap<>());
             HashMap<Long, ArrayList<TransformOnBoundary>> nChunks =
@@ -50,11 +59,11 @@ public class BakedRail {
 
             for (double tCanon : posResult.interior) {
                 addInteriorMatrix(rail, tCanon, isCanonical, railLength,
-                    props, interval, effectiveReversed, chunks);
+                    props, interval, effectiveReversed, chordHalfSpan, chunks);
             }
             for (BoundaryPosition np : posResult.boundary) {
                 Matrix4f mat = computeMatrix(rail, np.tCanon, isCanonical, railLength,
-                    props, interval, effectiveReversed);
+                    props, interval, effectiveReversed, chordHalfSpan);
                 Vec3 pos = rail.getPosition(isCanonical ? np.tCanon : (railLength - np.tCanon));
                 long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
                 nChunks.computeIfAbsent(chunkId, ignored -> new ArrayList<>())
@@ -69,10 +78,10 @@ public class BakedRail {
 
     private void addInteriorMatrix(Rail rail, double tCanon, boolean isCanonical,
                                    double railLength, RailModelProperties props, float interval,
-                                   boolean effectiveReversed,
+                                   boolean effectiveReversed, double chordHalfSpan,
                                    HashMap<Long, ArrayList<Matrix4f>> chunks) {
         Matrix4f mat = computeMatrix(rail, tCanon, isCanonical, railLength,
-            props, interval, effectiveReversed);
+            props, interval, effectiveReversed, chordHalfSpan);
         double tLocal = isCanonical ? tCanon : (railLength - tCanon);
         Vec3 pos = rail.getPosition(tLocal);
         long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
@@ -81,20 +90,25 @@ public class BakedRail {
 
     private Matrix4f computeMatrix(Rail rail, double tCanon, boolean isCanonical,
                                    double railLength, RailModelProperties props, float interval,
-                                   boolean effectiveReversed) {
+                                   boolean effectiveReversed, double chordHalfSpan) {
         double tLocal = isCanonical ? tCanon : (railLength - tCanon);
         Vec3 pos = rail.getPosition(tLocal);
 
         double tA, tB;
-        if (tLocal + 0.01 <= railLength) {
-            tA = tLocal;
-            tB = tLocal + 0.01;
-        } else if (tLocal - 0.01 >= 0) {
-            tA = tLocal - 0.01;
-            tB = tLocal;
+        if (chordHalfSpan > 0) {
+            tA = Math.max(0, tLocal - chordHalfSpan);
+            tB = Math.min(railLength, tLocal + chordHalfSpan);
         } else {
-            tA = 0;
-            tB = railLength;
+            if (tLocal + 0.01 <= railLength) {
+                tA = tLocal;
+                tB = tLocal + 0.01;
+            } else if (tLocal - 0.01 >= 0) {
+                tA = tLocal - 0.01;
+                tB = tLocal;
+            } else {
+                tA = 0;
+                tB = railLength;
+            }
         }
         Vec3 pA = rail.getPosition(tA);
         Vec3 pB = rail.getPosition(tB);
@@ -106,7 +120,7 @@ public class BakedRail {
         float yf = yc + (props.tiltToGradient ? (float)(pB.y - pA.y) : 0);
         float zf = zc + (float)(pB.z - pA.z);
 
-        return getLookAtMat(xc, yc, zc, xf, yf, zf, interval, effectiveReversed);
+        return getLookAtMat(xc, yc, zc, xf, yf, zf, effectiveReversed);
     }
 
     private PositionResult computePositions(RailModelRepeater p, double L, float I,
@@ -167,11 +181,15 @@ public class BakedRail {
         return ((long) (spX >> POS_SHIFT) << 32) | ((long) (spZ >> POS_SHIFT) & 0xFFFFFFFFL);
     }
 
-    public static Matrix4f getLookAtMat(float posX, float posY, float posZ, float tgX, float tgY, float tgZ, float len, boolean reverse) {
+    public static Matrix4f getLookAtMat(float posX, float posY, float posZ, float tgX, float tgY, float tgZ, boolean reverse) {
         Matrix4f matrix4f = Matrix4f.translation(posX, posY, posZ);
 
-        final float yaw = (float) Mth.atan2(tgX - posX, tgZ - posZ);
-        final float pitch = (float) Mth.atan2(tgY - posY, len / 2);
+        float dx = tgX - posX;
+        float dy = tgY - posY;
+        float dz = tgZ - posZ;
+        float hDist = (float) Math.sqrt(dx * dx + dz * dz);
+        final float yaw = (float) Mth.atan2(dx, dz);
+        final float pitch = (float) Mth.atan2(dy, Math.max(hDist, 0.0001f));
 
         matrix4f.rotateY((reverse ? (float) Math.PI : 0f) + yaw);
         matrix4f.rotateX(reverse ? pitch : -pitch);
