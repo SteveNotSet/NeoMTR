@@ -47,6 +47,11 @@ public abstract class ItemWithCreativeTabBaseMixin extends Item {
                     }
                 }
                 return InteractionResult.SUCCESS;
+            } else if (context.isSecondaryUseActive() && level.isClientSide) {
+                if (RailEditorVisualScreen.hasValidLastPick()) {
+                    RailEditorVisualScreen.openLastPickedScreen();
+                }
+                return InteractionResult.SUCCESS;
             } else {
                 return super.useOn(context);
             }

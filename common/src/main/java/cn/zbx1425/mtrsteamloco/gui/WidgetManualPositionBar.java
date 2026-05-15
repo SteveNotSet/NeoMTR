@@ -12,9 +12,7 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 #endif
 import net.minecraft.network.chat.Component;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.function.Consumer;
 
 public class WidgetManualPositionBar extends AbstractWidget {
@@ -25,6 +23,10 @@ public class WidgetManualPositionBar extends AbstractWidget {
     private boolean isDragging = false;
     private final Consumer<List<Float>> onChange;
     private Runnable onSelectionChange;
+
+    private boolean editable = true;
+    private Set<Integer> overrideIndices = Collections.emptySet();
+    private float playerProgress = -1;
 
     private float viewCenter = 50f;
     private int zoomIndex = 0;
@@ -52,6 +54,18 @@ public class WidgetManualPositionBar extends AbstractWidget {
         this.onSelectionChange = callback;
     }
 
+    public void setEditable(boolean editable) {
+        this.editable = editable;
+    }
+
+    public void setOverrideIndices(Set<Integer> indices) {
+        this.overrideIndices = indices != null ? indices : Collections.emptySet();
+    }
+
+    public void setPlayerProgress(float progress) {
+        this.playerProgress = progress;
+    }
+
     public void setRailLength(float railLength) {
         this.railLength = Math.max(0.1f, railLength);
         this.viewCenter = this.railLength / 2;
@@ -75,6 +89,10 @@ public class WidgetManualPositionBar extends AbstractWidget {
         return selectedIndex;
     }
 
+    public void setSelectedIndex(int index) {
+        this.selectedIndex = (index >= 0 && index < positions.size()) ? index : -1;
+    }
+
     public float getSelectedPosition() {
         return (selectedIndex >= 0 && selectedIndex < positions.size()) ? positions.get(selectedIndex) : -1;
     }
@@ -93,6 +111,15 @@ public class WidgetManualPositionBar extends AbstractWidget {
 
     public int getZoomIndex() {
         return zoomIndex;
+    }
+
+    public float getViewCenter() {
+        return viewCenter;
+    }
+
+    public void setViewCenter(float center) {
+        this.viewCenter = center;
+        clampViewport();
     }
 
     private float getZoom() {
@@ -205,8 +232,16 @@ public class WidgetManualPositionBar extends AbstractWidget {
 
         for (int i = 0; i < positions.size(); i++) {
             int px = ovPosToPixel(positions.get(i));
-            int color = (i == selectedIndex) ? 0xFFFFFF00 : 0xFF00CC00;
+            int color;
+            if (i == selectedIndex) color = 0xFFFFFF00;
+            else if (overrideIndices.contains(i)) color = 0xFFFF8800;
+            else color = 0xFF00CC00;
             dfill(g, px, ot + 1, px + 1, ot + OVERVIEW_H - 1, color);
+        }
+
+        if (playerProgress >= 0 && playerProgress <= railLength) {
+            int ppx = ovPosToPixel(playerProgress);
+            dfill(g, ppx, ot, ppx + 1, ot + OVERVIEW_H, 0xFFFF4444);
         }
 
         int tickY = ot + OVERVIEW_H;
@@ -232,8 +267,20 @@ public class WidgetManualPositionBar extends AbstractWidget {
             if (p < vs - 1 || p > ve + 1) continue;
             int px = dtPosToPixel(p);
             if (px < dl - HANDLE_HALF_W || px > dr + HANDLE_HALF_W) continue;
-            int color = (i == selectedIndex) ? 0xFFFFFF00 : 0xFF00FF00;
+            int color;
+            if (i == selectedIndex) color = 0xFFFFFF00;
+            else if (overrideIndices.contains(i)) color = 0xFFFF8800;
+            else color = 0xFF00FF00;
             dfill(g, px - HANDLE_HALF_W, dcy - hh, px + HANDLE_HALF_W, dcy + hh, color);
+        }
+
+        if (playerProgress >= 0 && playerProgress <= railLength
+                && playerProgress >= vs - 1 && playerProgress <= ve + 1) {
+            int ppx = dtPosToPixel(playerProgress);
+            if (ppx >= dl && ppx <= dr) {
+                dfill(g, ppx, dt, ppx + 1, dt + DETAIL_H, 0xAAFF4444);
+                dfill(g, ppx - 2, dt, ppx + 3, dt + 2, 0xFFFF4444);
+            }
         }
 
         drawTicks(g, font, dl, dr, vs, ve, dt + DETAIL_H);
@@ -300,8 +347,8 @@ public class WidgetManualPositionBar extends AbstractWidget {
                 int closestIdx = findClosestDetailHandle(mouseX);
                 if (closestIdx >= 0) {
                     selectedIndex = closestIdx;
-                    isDragging = true;
-                } else {
+                    if (editable) isDragging = true;
+                } else if (editable) {
                     float newPos = quantize(dtPixelToPos(mouseX));
                     positions.add(newPos);
                     Collections.sort(positions);
@@ -311,7 +358,7 @@ public class WidgetManualPositionBar extends AbstractWidget {
                 }
                 notifySelectionChange();
                 return true;
-            } else if (button == 1) {
+            } else if (button == 1 && editable) {
                 int closestIdx = findClosestDetailHandle(mouseX);
                 if (closestIdx >= 0) {
                     positions.remove(closestIdx);
@@ -352,7 +399,7 @@ public class WidgetManualPositionBar extends AbstractWidget {
             clampViewport();
             return true;
         }
-        if (isDragging && selectedIndex >= 0 && selectedIndex < positions.size() && button == 0) {
+        if (editable && isDragging && selectedIndex >= 0 && selectedIndex < positions.size() && button == 0) {
             float newPos = quantize(dtPixelToPos(mouseX));
             positions.set(selectedIndex, newPos);
             notifyChange();

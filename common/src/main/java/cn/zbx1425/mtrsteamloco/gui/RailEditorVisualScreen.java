@@ -10,6 +10,7 @@ import com.mojang.datafixers.util.Pair;
 import io.netty.buffer.Unpooled;
 import mtr.RegistryClient;
 import mtr.client.IDrawing;
+import mtr.client.ClientData;
 import mtr.data.Rail;
 import mtr.mappings.Text;
 import mtr.mappings.UtilitiesClient;
@@ -27,14 +28,14 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.phys.Vec3;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 public class RailEditorVisualScreen extends SelectListScreen {
 
-    private boolean isSelectingModel = false;
+    private enum ModelSelectTarget { NONE, BASE, INSTANCE }
+    private ModelSelectTarget modelSelectTarget = ModelSelectTarget.NONE;
 
     private static Rail pickedRail = null;
     private static BlockPos pickedPosStart = BlockPos.ZERO;
@@ -51,6 +52,11 @@ public class RailEditorVisualScreen extends SelectListScreen {
     private int selectedLayerIndex = 0;
 
     private final WidgetScrollList layerScrollList = new WidgetScrollList(0, 0, 100, 100);
+    private final WidgetScrollPanel rightScrollPanel = new WidgetScrollPanel(0, 0, 100, 100);
+
+    private int savedBarSelectedIndex = -1;
+    private int savedBarZoomIndex = 0;
+    private float savedBarViewCenter = -1;
 
     public RailEditorVisualScreen() {
         super(Text.translatable("gui.mtr.rail_editor_visual.title"));
@@ -68,10 +74,18 @@ public class RailEditorVisualScreen extends SelectListScreen {
     protected void loadPage() {
         clearWidgets();
 
-        if (isSelectingModel) {
+        if (modelSelectTarget != ModelSelectTarget.NONE) {
             String currentModelKey = "";
             RailModelRepeater sel = getSelectedRepeater();
-            if (sel != null) currentModelKey = sel.modelKey;
+            if (sel != null) {
+                if (modelSelectTarget == ModelSelectTarget.BASE) {
+                    currentModelKey = sel.modelKey;
+                } else if (modelSelectTarget == ModelSelectTarget.INSTANCE && currentBar != null) {
+                    int idx = currentBar.getSelectedIndex();
+                    RailModelRepeater.InstanceModelOverride ov = sel.instanceOverrides.get(idx);
+                    currentModelKey = ov != null ? ov.modelKeyOverride : "";
+                }
+            }
             String finalKey = currentModelKey;
             scrollList.visible = true;
             loadSelectPage(key -> !key.equals(finalKey));
@@ -116,19 +130,26 @@ public class RailEditorVisualScreen extends SelectListScreen {
     }
 
     private void loadEditorPage() {
+        if (currentBar != null) {
+            savedBarSelectedIndex = currentBar.getSelectedIndex();
+            savedBarZoomIndex = currentBar.getZoomIndex();
+            savedBarViewCenter = currentBar.getViewCenter();
+        }
+
         List<RailModelRepeater> repeaters = getRepeaters();
 
         int leftPanelWidth = Mth.clamp(width / 3, 140, 220);
         int rightPanelWidth = Math.min(width - (leftPanelWidth + SQUARE_SIZE) - SQUARE_SIZE, 380);
         int rightPanelX = leftPanelWidth + (width - leftPanelWidth - rightPanelWidth) / 2;
 
+        // -- Left panel: layer list --
         layerScrollList.children.clear();
         IDrawing.setPositionAndWidth(layerScrollList, 0, SQUARE_SIZE, leftPanelWidth);
         layerScrollList.setHeight(height - SQUARE_SIZE * 3);
 
         for (int i = 0; i < repeaters.size(); i++) {
             RailModelRepeater p = repeaters.get(i);
-            String modelLabel = p.modelKey.isEmpty() ? "(default)" : p.modelKey;
+            String modelLabel = p.modelKey.isEmpty() ? Text.translatable("gui.mtr.rail_editor_visual.default_model").getString() : p.modelKey;
             RailModelProperties props = RailModelRegistry.elements.get(p.modelKey);
             if (props != null && !props.name.getString().isEmpty()) {
                 modelLabel = props.name.getString();
@@ -181,6 +202,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
                 }
         )), 0, height - SQUARE_SIZE * 2, leftPanelWidth);
 
+        // -- Right panel --
         RailModelRepeater selected = getSelectedRepeater();
         if (selected == null) {
             addRenderableWidget(new WidgetLabel(rightPanelX, SQUARE_SIZE * 2, rightPanelWidth,
@@ -188,52 +210,58 @@ public class RailEditorVisualScreen extends SelectListScreen {
             return;
         }
 
-        int x = rightPanelX;
-        int w = rightPanelWidth;
+        rightScrollPanel.children.clear();
+        IDrawing.setPositionAndWidth(rightScrollPanel, rightPanelX, SQUARE_SIZE, rightPanelWidth);
+        rightScrollPanel.setHeight(height - SQUARE_SIZE * 2);
+
+        int w = rightPanelWidth - 10;
         int halfW = w / 2 - 2;
-        int y = SQUARE_SIZE;
+        int y = 0;
 
         // -- Model selector --
-        String modelLabel = selected.modelKey.isEmpty() ? "(default)" : selected.modelKey;
+        String modelLabel = selected.modelKey.isEmpty() ? Text.translatable("gui.mtr.rail_editor_visual.default_model").getString() : selected.modelKey;
         RailModelProperties props = RailModelRegistry.elements.get(selected.modelKey);
         if (props != null && !props.name.getString().isEmpty()) {
             modelLabel = props.name.getString();
         }
-        IDrawing.setPositionAndWidth(addRenderableWidget(UtilitiesClient.newButton(
+        Button modelBtn = UtilitiesClient.newButton(
                 Text.literal(modelLabel),
                 sender -> {
-                    isSelectingModel = true;
+                    modelSelectTarget = ModelSelectTarget.BASE;
                     Minecraft.getInstance().tell(this::loadPage);
                 }
-        )), x, y, w);
+        );
+        IDrawing.setPositionAndWidth(modelBtn, 0, y, w);
+        rightScrollPanel.children.add(modelBtn);
         y += SQUARE_SIZE + 4;
 
-        // -- Common: Direction (reversed, relative to isSecondaryDir) --
-        addRenderableWidget(new WidgetLabel(x, y + 6, w,
+        // -- Direction --
+        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, halfW,
                 Text.translatable("gui.mtr.rail_editor_visual.direction")));
-        y += SQUARE_SIZE - 4;
 
         Button btnNormal = UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.rail_editor_visual.facing_away"),
                 sender -> { selected.reversed = false; sendUpdate(); Minecraft.getInstance().tell(this::loadPage); }
         );
         btnNormal.active = selected.reversed;
-        IDrawing.setPositionAndWidth(addRenderableWidget(btnNormal), x, y, halfW);
+        IDrawing.setPositionAndWidth(btnNormal, halfW + 4, y, (w - halfW - 4) / 2 - 1);
+        rightScrollPanel.children.add(btnNormal);
 
         Button btnReversed = UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.rail_editor_visual.facing_here"),
                 sender -> { selected.reversed = true; sendUpdate(); Minecraft.getInstance().tell(this::loadPage); }
         );
         btnReversed.active = !selected.reversed;
-        IDrawing.setPositionAndWidth(addRenderableWidget(btnReversed), x + halfW + 4, y, halfW);
-        y += SQUARE_SIZE + 4;
+        IDrawing.setPositionAndWidth(btnReversed, halfW + 4 + (w - halfW - 4) / 2 + 1, y, (w - halfW - 4) / 2 - 1);
+        rightScrollPanel.children.add(btnReversed);
+        y += SQUARE_SIZE + 2;
 
-        // -- Common: Interval override --
-        addRenderableWidget(new WidgetLabel(x, y + 6, w,
+        // -- Interval override --
+        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, halfW,
                 Text.translatable("gui.mtr.rail_editor_visual.interval")));
-        y += SQUARE_SIZE - 4;
 
         WidgetBetterTextField intervalField = new WidgetBetterTextField("0", 8);
+        IDrawing.setPositionAndWidth(intervalField, halfW + 4, y, halfW);
         intervalField.setValue(selected.intervalOverride > 0 ? String.format("%.2f", selected.intervalOverride) : "");
         intervalField.setResponder(text -> {
             try {
@@ -244,11 +272,9 @@ public class RailEditorVisualScreen extends SelectListScreen {
                 intervalField.setTextColor(0xFF0000);
             }
         });
-        IDrawing.setPositionAndWidth(addRenderableWidget(intervalField), x, y, halfW);
         intervalField.active = selected.repeaterMode != RepeaterMode.MANUAL;
+        rightScrollPanel.children.add(intervalField);
         y += SQUARE_SIZE + 4;
-
-        y += 6;
 
         // -- Mode selector --
         int modeButtonWidth = w / 3;
@@ -257,7 +283,8 @@ public class RailEditorVisualScreen extends SelectListScreen {
                 sender -> { selected.repeaterMode = RepeaterMode.STRETCH_INTERVAL; sendUpdate(); Minecraft.getInstance().tell(this::loadPage); }
         );
         btnStretch.active = selected.repeaterMode != RepeaterMode.STRETCH_INTERVAL;
-        IDrawing.setPositionAndWidth(addRenderableWidget(btnStretch), x, y, modeButtonWidth);
+        IDrawing.setPositionAndWidth(btnStretch, 0, y, modeButtonWidth);
+        rightScrollPanel.children.add(btnStretch);
 
         Button btnFixed = UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.rail_editor_visual.fixed_interval"),
@@ -271,7 +298,8 @@ public class RailEditorVisualScreen extends SelectListScreen {
                 }
         );
         btnFixed.active = selected.repeaterMode != RepeaterMode.FIXED_INTERVAL;
-        IDrawing.setPositionAndWidth(addRenderableWidget(btnFixed), x + modeButtonWidth, y, modeButtonWidth);
+        IDrawing.setPositionAndWidth(btnFixed, modeButtonWidth, y, modeButtonWidth);
+        rightScrollPanel.children.add(btnFixed);
 
         Button btnManual = UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.rail_editor_visual.manual"),
@@ -285,45 +313,53 @@ public class RailEditorVisualScreen extends SelectListScreen {
                 }
         );
         btnManual.active = selected.repeaterMode != RepeaterMode.MANUAL;
-        IDrawing.setPositionAndWidth(addRenderableWidget(btnManual), x + modeButtonWidth * 2, y, w - modeButtonWidth * 2);
+        IDrawing.setPositionAndWidth(btnManual, modeButtonWidth * 2, y, w - modeButtonWidth * 2);
+        rightScrollPanel.children.add(btnManual);
         y += SQUARE_SIZE + 4;
 
-        // -- Mode-specific panel --
-        switch (selected.repeaterMode) {
-            case STRETCH_INTERVAL -> {} // all options are in common section
-            case FIXED_INTERVAL -> loadFixedPanel(selected, x, y, w);
-            case MANUAL -> loadManualPanel(selected, x, y, w);
+        // -- Mode-specific settings --
+        if (selected.repeaterMode == RepeaterMode.FIXED_INTERVAL) {
+            y = loadFixedPanel(selected, y, w);
         }
+
+        // -- Position bar (all modes) --
+        y = loadPositionBar(selected, y, w);
+
+        // -- Instance override panel --
+        loadInstanceOverridePanel(selected, y, w);
+
+        addRenderableWidget(rightScrollPanel);
     }
 
-    private void loadFixedPanel(RailModelRepeater repeater, int x, int y, int w) {
+    private int loadFixedPanel(RailModelRepeater repeater, int y, int w) {
         boolean fromThisNode = repeater.offsetFromStart == userIsAtCanonStart();
         int halfW = w / 2 - 2;
 
-        addRenderableWidget(new WidgetLabel(x, y + 6, w,
+        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, halfW,
                 Text.translatable("gui.mtr.rail_editor_visual.offset_direction")));
-        y += SQUARE_SIZE - 4;
 
         Button btnFromThis = UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.rail_editor_visual.from_this_node"),
                 sender -> { repeater.offsetFromStart = userIsAtCanonStart(); sendUpdate(); Minecraft.getInstance().tell(this::loadPage); }
         );
         btnFromThis.active = !fromThisNode;
-        IDrawing.setPositionAndWidth(addRenderableWidget(btnFromThis), x, y, halfW);
+        IDrawing.setPositionAndWidth(btnFromThis, halfW + 4, y, (w - halfW - 4) / 2 - 1);
+        rightScrollPanel.children.add(btnFromThis);
 
         Button btnFromOther = UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.rail_editor_visual.from_other_node"),
                 sender -> { repeater.offsetFromStart = !userIsAtCanonStart(); sendUpdate(); Minecraft.getInstance().tell(this::loadPage); }
         );
         btnFromOther.active = fromThisNode;
-        IDrawing.setPositionAndWidth(addRenderableWidget(btnFromOther), x + halfW + 4, y, halfW);
+        IDrawing.setPositionAndWidth(btnFromOther, halfW + 4 + (w - halfW - 4) / 2 + 1, y, (w - halfW - 4) / 2 - 1);
+        rightScrollPanel.children.add(btnFromOther);
         y += SQUARE_SIZE + 2;
 
-        addRenderableWidget(new WidgetLabel(x, y + 6, w,
+        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, halfW,
                 Text.translatable("gui.mtr.rail_editor_visual.offset")));
-        y += SQUARE_SIZE - 4;
 
         WidgetBetterTextField offsetField = new WidgetBetterTextField("0", 8);
+        IDrawing.setPositionAndWidth(offsetField, halfW + 4, y, halfW);
         offsetField.setValue(String.format("%.3f", repeater.offset));
         offsetField.setResponder(text -> {
             try {
@@ -334,19 +370,23 @@ public class RailEditorVisualScreen extends SelectListScreen {
                 offsetField.setTextColor(0xFF0000);
             }
         });
-        IDrawing.setPositionAndWidth(addRenderableWidget(offsetField), x, y, halfW);
-        y += SQUARE_SIZE + 4;
+        rightScrollPanel.children.add(offsetField);
+        y += SQUARE_SIZE + 2;
 
         int btnW = w / 3 - 2;
-        IDrawing.setPositionAndWidth(addRenderableWidget(UtilitiesClient.newButton(
+        Button btnPropagate = UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.rail_editor_visual.propagate"),
                 sender -> sendPropagate(repeater, false)
-        )), x, y, btnW);
+        );
+        IDrawing.setPositionAndWidth(btnPropagate, 0, y, btnW);
+        rightScrollPanel.children.add(btnPropagate);
 
-        IDrawing.setPositionAndWidth(addRenderableWidget(UtilitiesClient.newButton(
+        Button btnUndo = UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.rail_editor_visual.undo_propagate"),
                 sender -> sendPropagate(repeater, true)
-        )), x + btnW + 2, y, btnW);
+        );
+        IDrawing.setPositionAndWidth(btnUndo, btnW + 2, y, btnW);
+        rightScrollPanel.children.add(btnUndo);
 
         boolean canContinue = lastTerminalNode != null
                 && lastTerminalNode.equals(pickedPosStart)
@@ -362,21 +402,45 @@ public class RailEditorVisualScreen extends SelectListScreen {
                 }
         );
         btnContinue.active = canContinue;
-        IDrawing.setPositionAndWidth(addRenderableWidget(btnContinue), x + btnW * 2 + 4, y, btnW);
+        IDrawing.setPositionAndWidth(btnContinue, btnW * 2 + 4, y, w - btnW * 2 - 4);
+        rightScrollPanel.children.add(btnContinue);
+        y += SQUARE_SIZE + 4;
+
+        return y;
     }
 
     private WidgetManualPositionBar currentBar;
     private WidgetBetterTextField positionInputField;
 
-    private void loadManualPanel(RailModelRepeater repeater, int x, int y, int w) {
+    private int loadPositionBar(RailModelRepeater repeater, int y, int w) {
         float railLength = pickedRail != null ? (float) pickedRail.getLength() : 100f;
         boolean flipForDisplay = !userIsAtCanonStart();
+        boolean isManual = repeater.repeaterMode == RepeaterMode.MANUAL;
 
-        addRenderableWidget(new WidgetLabel(x, y + 6, w,
-                Text.literal(String.format("%d pts | Scroll to zoom", repeater.manualPositions.size()))));
-        y += SQUARE_SIZE + 4;
+        List<Float> computedPositions;
+        if (isManual) {
+            computedPositions = repeater.manualPositions;
+        } else {
+            computedPositions = computePositionsForCurrentMode(repeater);
+        }
 
-        currentBar = new WidgetManualPositionBar(x, y, w, positions -> {
+        List<Float> displayPositions;
+        if (flipForDisplay) {
+            displayPositions = new ArrayList<>(computedPositions.size());
+            for (float pos : computedPositions) {
+                displayPositions.add(railLength - pos);
+            }
+            Collections.reverse(displayPositions);
+        } else {
+            displayPositions = new ArrayList<>(computedPositions);
+        }
+
+        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, w,
+                Text.translatable("gui.mtr.rail_editor_visual.position_bar_info", displayPositions.size())));
+        y += SQUARE_SIZE + 2;
+
+        currentBar = new WidgetManualPositionBar(0, y, w, positions -> {
+            if (!isManual) return;
             if (flipForDisplay) {
                 List<Float> canonPositions = new ArrayList<>(positions.size());
                 for (float pos : positions) {
@@ -390,54 +454,285 @@ public class RailEditorVisualScreen extends SelectListScreen {
             sendUpdate();
         });
         currentBar.setRailLength(railLength);
-
-        List<Float> displayPositions;
-        if (flipForDisplay) {
-            displayPositions = new ArrayList<>(repeater.manualPositions.size());
-            for (float pos : repeater.manualPositions) {
-                displayPositions.add(railLength - pos);
-            }
-            Collections.reverse(displayPositions);
-        } else {
-            displayPositions = new ArrayList<>(repeater.manualPositions);
-        }
+        currentBar.setEditable(isManual);
         currentBar.setPositions(displayPositions);
-        currentBar.setOnSelectionChange(() -> updatePositionInputField(repeater));
-        addRenderableWidget(currentBar);
+        if (savedBarSelectedIndex >= 0 && savedBarSelectedIndex < displayPositions.size()) {
+            currentBar.setSelectedIndex(savedBarSelectedIndex);
+        }
+        if (savedBarZoomIndex > 0) {
+            currentBar.setZoomIndex(savedBarZoomIndex);
+        }
+        if (savedBarViewCenter >= 0) {
+            currentBar.setViewCenter(savedBarViewCenter);
+        }
+
+        Set<Integer> ovIndices = new HashSet<>();
+        Map<Integer, RailModelRepeater.InstanceModelOverride> displayOverrides = getDisplayOverrides(repeater, flipForDisplay, displayPositions.size());
+        for (Map.Entry<Integer, RailModelRepeater.InstanceModelOverride> e : displayOverrides.entrySet()) {
+            if (!e.getValue().isDefault()) ovIndices.add(e.getKey());
+        }
+        currentBar.setOverrideIndices(ovIndices);
+
+        float playerProgress = computePlayerProgress();
+        if (playerProgress >= 0) {
+            float displayProgress = flipForDisplay ? (railLength - playerProgress) : playerProgress;
+            currentBar.setPlayerProgress(displayProgress);
+        }
+
+        currentBar.setOnSelectionChange(() -> Minecraft.getInstance().tell(this::loadPage));
+        rightScrollPanel.children.add(currentBar);
         y += currentBar.getHeight() + 4;
 
-        int halfW = w / 2 - 2;
-        addRenderableWidget(new WidgetLabel(x, y + 6, halfW,
-                Text.translatable("gui.mtr.rail_editor_visual.selected_offset")));
-        positionInputField = new WidgetBetterTextField("", 10);
-        IDrawing.setPositionAndWidth(addRenderableWidget(positionInputField), x + halfW + 4, y, halfW);
-        updatePositionInputField(repeater);
-        positionInputField.setResponder(text -> {
-            if (currentBar == null) return;
-            int sel = currentBar.getSelectedIndex();
-            if (sel < 0) return;
-            try {
-                float val = Float.parseFloat(text);
-                val = quantizePosition(val);
-                currentBar.setPositionAt(sel, val);
-                positionInputField.setTextColor(0xE0E0E0);
-            } catch (NumberFormatException e) {
-                positionInputField.setTextColor(0xFF0000);
-            }
-        });
+        if (isManual) {
+            int halfW = w / 2 - 2;
+            rightScrollPanel.children.add(new WidgetLabel(0, y + 6, halfW,
+                    Text.translatable("gui.mtr.rail_editor_visual.selected_offset")));
+            positionInputField = new WidgetBetterTextField("", 10);
+            IDrawing.setPositionAndWidth(positionInputField, halfW + 4, y, halfW);
+            rightScrollPanel.children.add(positionInputField);
+            updatePositionInputField(repeater, true);
+            positionInputField.setResponder(text -> {
+                if (currentBar == null) return;
+                int sel = currentBar.getSelectedIndex();
+                if (sel < 0) return;
+                try {
+                    float val = Float.parseFloat(text);
+                    val = quantizePosition(val);
+                    currentBar.setPositionAt(sel, val);
+                    positionInputField.setTextColor(0xE0E0E0);
+                } catch (NumberFormatException e) {
+                    positionInputField.setTextColor(0xFF0000);
+                }
+            });
+            y += SQUARE_SIZE + 4;
+        } else {
+            positionInputField = null;
+        }
+
+        return y;
     }
 
-    private void updatePositionInputField(RailModelRepeater repeater) {
+    private Map<Integer, RailModelRepeater.InstanceModelOverride> getDisplayOverrides(
+            RailModelRepeater repeater, boolean flipForDisplay, int posCount) {
+        if (!flipForDisplay) return repeater.instanceOverrides;
+        Map<Integer, RailModelRepeater.InstanceModelOverride> result = new HashMap<>();
+        for (Map.Entry<Integer, RailModelRepeater.InstanceModelOverride> e : repeater.instanceOverrides.entrySet()) {
+            int canonIdx = e.getKey();
+            int displayIdx = posCount - 1 - canonIdx;
+            if (displayIdx >= 0 && displayIdx < posCount) {
+                result.put(displayIdx, e.getValue());
+            }
+        }
+        return result;
+    }
+
+    private int displayIndexToCanonIndex(int displayIdx, int posCount) {
+        boolean flipForDisplay = !userIsAtCanonStart();
+        return flipForDisplay ? (posCount - 1 - displayIdx) : displayIdx;
+    }
+
+    private void loadInstanceOverridePanel(RailModelRepeater repeater, int y, int w) {
+        if (currentBar == null) return;
+        int sel = currentBar.getSelectedIndex();
+        if (sel < 0) return;
+
+        List<Float> computedPositions;
+        if (repeater.repeaterMode == RepeaterMode.MANUAL) {
+            computedPositions = repeater.manualPositions;
+        } else {
+            computedPositions = computePositionsForCurrentMode(repeater);
+        }
+        int posCount = computedPositions.size();
+        int canonIdx = displayIndexToCanonIndex(sel, posCount);
+        if (canonIdx < 0 || canonIdx >= posCount) return;
+
+        RailModelRepeater.InstanceModelOverride override = repeater.instanceOverrides.get(canonIdx);
+        boolean hasOverride = override != null && !override.isDefault();
+
+        int halfW = w / 2 - 2;
+
+        // -- Instance model override --
+        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, w,
+                Text.translatable("gui.mtr.rail_editor_visual.instance_override")));
+        y += SQUARE_SIZE - 2;
+
+        String ovModelLabel;
+        if (override != null && !override.modelKeyOverride.isEmpty()) {
+            RailModelProperties ovProps = RailModelRegistry.elements.get(override.modelKeyOverride);
+            ovModelLabel = (ovProps != null && !ovProps.name.getString().isEmpty())
+                    ? ovProps.name.getString() : override.modelKeyOverride;
+        } else {
+            ovModelLabel = Text.translatable("gui.mtr.rail_editor_visual.base_model").getString();
+        }
+
+        Button ovModelBtn = UtilitiesClient.newButton(
+                Text.literal(ovModelLabel),
+                sender -> {
+                    modelSelectTarget = ModelSelectTarget.INSTANCE;
+                    Minecraft.getInstance().tell(this::loadPage);
+                }
+        );
+        IDrawing.setPositionAndWidth(ovModelBtn, 0, y, hasOverride ? w - SQUARE_SIZE - 2 : w);
+        rightScrollPanel.children.add(ovModelBtn);
+
+        if (hasOverride) {
+            final int cIdx = canonIdx;
+            Button deleteOvBtn = UtilitiesClient.newButton(
+                    Text.literal("x"),
+                    sender -> {
+                        repeater.instanceOverrides.remove(cIdx);
+                        sendUpdate();
+                        Minecraft.getInstance().tell(this::loadPage);
+                    }
+            );
+            IDrawing.setPositionAndWidth(deleteOvBtn, w - SQUARE_SIZE, y, SQUARE_SIZE);
+            rightScrollPanel.children.add(deleteOvBtn);
+        }
+        y += SQUARE_SIZE + 2;
+
+        // -- Instance direction --
+        {
+            final int cIdx0 = canonIdx;
+            int halfW = w / 2 - 2;
+            rightScrollPanel.children.add(new WidgetLabel(0, y + 6, halfW,
+                    Text.translatable("gui.mtr.rail_editor_visual.instance_direction")));
+            boolean isReversedOv = override != null && override.reversed;
+            Button btnSameDir = UtilitiesClient.newButton(
+                    Text.translatable("gui.mtr.rail_editor_visual.same_as_base"),
+                    sender -> {
+                        RailModelRepeater.InstanceModelOverride ov = repeater.instanceOverrides
+                                .computeIfAbsent(cIdx0, k -> new RailModelRepeater.InstanceModelOverride());
+                        ov.reversed = false;
+                        sendUpdate();
+                        Minecraft.getInstance().tell(this::loadPage);
+                    }
+            );
+            btnSameDir.active = isReversedOv;
+            IDrawing.setPositionAndWidth(btnSameDir, halfW + 4, y, (w - halfW - 4) / 2 - 1);
+            rightScrollPanel.children.add(btnSameDir);
+
+            Button btnFlipDir = UtilitiesClient.newButton(
+                    Text.translatable("gui.mtr.rail_editor_visual.opposite_to_base"),
+                    sender -> {
+                        RailModelRepeater.InstanceModelOverride ov = repeater.instanceOverrides
+                                .computeIfAbsent(cIdx0, k -> new RailModelRepeater.InstanceModelOverride());
+                        ov.reversed = true;
+                        sendUpdate();
+                        Minecraft.getInstance().tell(this::loadPage);
+                    }
+            );
+            btnFlipDir.active = !isReversedOv;
+            IDrawing.setPositionAndWidth(btnFlipDir, halfW + 4 + (w - halfW - 4) / 2 + 1, y, (w - halfW - 4) / 2 - 1);
+            rightScrollPanel.children.add(btnFlipDir);
+            y += SQUARE_SIZE + 2;
+        }
+
+        // -- XYZ offset --
+        int thirdW = w / 3 - 2;
+
+        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, thirdW,
+                Text.translatable("gui.mtr.rail_editor_visual.offset_x")));
+        rightScrollPanel.children.add(new WidgetLabel(thirdW + 2, y + 6, thirdW,
+                Text.translatable("gui.mtr.rail_editor_visual.offset_y")));
+        rightScrollPanel.children.add(new WidgetLabel(thirdW * 2 + 4, y + 6, thirdW,
+                Text.translatable("gui.mtr.rail_editor_visual.offset_z")));
+        y += SQUARE_SIZE - 4;
+
+        final int cIdx = canonIdx;
+
+        WidgetBetterTextField fieldX = new WidgetBetterTextField("0", 8);
+        IDrawing.setPositionAndWidth(fieldX, 0, y, thirdW);
+        fieldX.setValue(override != null ? String.format("%.3f", override.offsetX) : "0");
+        fieldX.setResponder(text -> {
+            try {
+                float val = text.isEmpty() ? 0 : Float.parseFloat(text);
+                RailModelRepeater.InstanceModelOverride ov = repeater.instanceOverrides
+                        .computeIfAbsent(cIdx, k -> new RailModelRepeater.InstanceModelOverride());
+                ov.offsetX = val;
+                fieldX.setTextColor(0xE0E0E0);
+                sendUpdate();
+            } catch (NumberFormatException e) {
+                fieldX.setTextColor(0xFF0000);
+            }
+        });
+        rightScrollPanel.children.add(fieldX);
+
+        WidgetBetterTextField fieldY = new WidgetBetterTextField("0", 8);
+        IDrawing.setPositionAndWidth(fieldY, thirdW + 2, y, thirdW);
+        fieldY.setValue(override != null ? String.format("%.3f", override.offsetY) : "0");
+        fieldY.setResponder(text -> {
+            try {
+                float val = text.isEmpty() ? 0 : Float.parseFloat(text);
+                RailModelRepeater.InstanceModelOverride ov = repeater.instanceOverrides
+                        .computeIfAbsent(cIdx, k -> new RailModelRepeater.InstanceModelOverride());
+                ov.offsetY = val;
+                fieldY.setTextColor(0xE0E0E0);
+                sendUpdate();
+            } catch (NumberFormatException e) {
+                fieldY.setTextColor(0xFF0000);
+            }
+        });
+        rightScrollPanel.children.add(fieldY);
+
+        WidgetBetterTextField fieldZ = new WidgetBetterTextField("0", 8);
+        IDrawing.setPositionAndWidth(fieldZ, thirdW * 2 + 4, y, thirdW);
+        fieldZ.setValue(override != null ? String.format("%.3f", override.offsetZ) : "0");
+        fieldZ.setResponder(text -> {
+            try {
+                float val = text.isEmpty() ? 0 : Float.parseFloat(text);
+                RailModelRepeater.InstanceModelOverride ov = repeater.instanceOverrides
+                        .computeIfAbsent(cIdx, k -> new RailModelRepeater.InstanceModelOverride());
+                ov.offsetZ = val;
+                fieldZ.setTextColor(0xE0E0E0);
+                sendUpdate();
+            } catch (NumberFormatException e) {
+                fieldZ.setTextColor(0xFF0000);
+            }
+        });
+        rightScrollPanel.children.add(fieldZ);
+    }
+
+    private void updatePositionInputField(RailModelRepeater repeater, boolean editable) {
         if (positionInputField == null || currentBar == null) return;
         int sel = currentBar.getSelectedIndex();
-        if (sel >= 0 && sel < repeater.manualPositions.size()) {
-            positionInputField.active = true;
+        if (sel >= 0) {
+            positionInputField.active = editable;
             positionInputField.setValue(String.format("%.3f", currentBar.getSelectedPosition()));
             positionInputField.setTextColor(0xE0E0E0);
         } else {
             positionInputField.active = false;
             positionInputField.setValue("");
         }
+    }
+
+    private float computePlayerProgress() {
+        if (pickedRail == null || Minecraft.getInstance().player == null) return -1;
+        Vec3 playerPos = Minecraft.getInstance().player.position();
+        double railLength = pickedRail.getLength();
+
+        double bestT = 0;
+        double bestDistSq = Double.MAX_VALUE;
+        double step = Math.max(0.5, railLength / 200);
+        for (double t = 0; t <= railLength; t += step) {
+            Vec3 pos = pickedRail.getPosition(t);
+            double dSq = pos.distanceToSqr(playerPos);
+            if (dSq < bestDistSq) {
+                bestDistSq = dSq;
+                bestT = t;
+            }
+        }
+
+        double lo = Math.max(0, bestT - step);
+        double hi = Math.min(railLength, bestT + step);
+        for (int i = 0; i < 16; i++) {
+            double m1 = lo + (hi - lo) / 3;
+            double m2 = hi - (hi - lo) / 3;
+            double d1 = pickedRail.getPosition(m1).distanceToSqr(playerPos);
+            double d2 = pickedRail.getPosition(m2).distanceToSqr(playerPos);
+            if (d1 < d2) hi = m2;
+            else lo = m1;
+        }
+        return (float) ((lo + hi) / 2);
     }
 
     private static float quantizePosition(float value) {
@@ -517,10 +812,26 @@ public class RailEditorVisualScreen extends SelectListScreen {
     @Override
     protected void onBtnClick(String btnKey) {
         RailModelRepeater sel = getSelectedRepeater();
-        if (sel != null) {
+        if (sel == null) return;
+
+        if (modelSelectTarget == ModelSelectTarget.INSTANCE && currentBar != null) {
+            int displayIdx = currentBar.getSelectedIndex();
+            List<Float> computedPositions;
+            if (sel.repeaterMode == RepeaterMode.MANUAL) {
+                computedPositions = sel.manualPositions;
+            } else {
+                computedPositions = computePositionsForCurrentMode(sel);
+            }
+            int canonIdx = displayIndexToCanonIndex(displayIdx, computedPositions.size());
+            if (canonIdx >= 0 && canonIdx < computedPositions.size()) {
+                RailModelRepeater.InstanceModelOverride ov = sel.instanceOverrides
+                        .computeIfAbsent(canonIdx, k -> new RailModelRepeater.InstanceModelOverride());
+                ov.modelKeyOverride = btnKey;
+            }
+        } else {
             sel.modelKey = btnKey;
-            sendUpdate();
         }
+        sendUpdate();
     }
 
     @Override
@@ -559,6 +870,17 @@ public class RailEditorVisualScreen extends SelectListScreen {
         pickedRail = RailPicker.pickedRail;
         pickedPosStart = RailPicker.pickedPosStart;
         pickedPosEnd = RailPicker.pickedPosEnd;
+    }
+
+    public static boolean hasValidLastPick() {
+        if (pickedRail == null) return false;
+        Map<BlockPos, Rail> connections = ClientData.RAILS.get(pickedPosStart);
+        if (connections == null) return false;
+        return connections.containsKey(pickedPosEnd);
+    }
+
+    public static void openLastPickedScreen() {
+        Minecraft.getInstance().tell(() -> Minecraft.getInstance().setScreen(new RailEditorVisualScreen()));
     }
 
     public static void batchApplyBrushTemplate(CompoundTag toolTag) {
@@ -649,21 +971,30 @@ public class RailEditorVisualScreen extends SelectListScreen {
     public void render(PoseStack guiGraphics, int mouseX, int mouseY, float partialTick) {
 #endif
         super.render(guiGraphics, mouseX, mouseY, partialTick);
-        if (isSelectingModel) {
+        if (modelSelectTarget != ModelSelectTarget.NONE) {
             renderSelectPage(guiGraphics);
         }
     }
 
     @Override
     public void onClose() {
-        if (isSelectingModel) {
-            isSelectingModel = false;
+        if (modelSelectTarget != ModelSelectTarget.NONE) {
+            modelSelectTarget = ModelSelectTarget.NONE;
             Minecraft.getInstance().tell(this::loadPage);
         } else {
             RailModelRepeater sel = getSelectedRepeater();
-            if (sel != null) lastEditedModelKey = sel.modelKey;
+            if (sel != null) {
+                lastEditedModelKey = sel.modelKey;
+                pruneOverrides(sel);
+            }
             this.minecraft.setScreen(null);
         }
+    }
+
+    private void pruneOverrides(RailModelRepeater repeater) {
+        List<Float> positions = computePositionsForCurrentMode(repeater);
+        repeater.pruneOverrides(positions.size());
+        if (pickedRail != null) sendUpdate();
     }
 
     @Override

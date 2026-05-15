@@ -78,7 +78,7 @@ public abstract class AbstractScrollWidget extends AbstractWidget {
             return;
         }
         this.renderBackground(guiGraphics);
-        vcEnableScissor(this.getX() + 1, this.getY() + 1, this.getX() + this.width - 1, this.getY() + this.height - 1);
+        vcEnableScissor(this.getX(), this.getY(), this.getX() + this.width, this.getY() + this.height);
         poseStack.pushPose();
         poseStack.translate(0.0, -this.offset, 0.0);
         this.renderContents(guiGraphics, mouseX, mouseY, partialTick);
@@ -117,12 +117,12 @@ public abstract class AbstractScrollWidget extends AbstractWidget {
     }
 
 #if MC_VERSION >= "12000"
-    private void renderBackground(GuiGraphics guiGraphics) {
+    protected void renderBackground(GuiGraphics guiGraphics) {
         guiGraphics.fill(this.getX(), this.getY() + 1, this.getX() + this.width, this.getY() + this.height - 1, this.isFocused() ? 0xffffffff : 0xffa0a0a0);
         guiGraphics.fill(this.getX() + 1, this.getY() + 1, this.getX() + this.width - 1, this.getY() + this.height - 1, 0xff555555);
     }
 #else
-    private void renderBackground(PoseStack poseStack) {
+    protected void renderBackground(PoseStack poseStack) {
         fill(poseStack, this.getX(), this.getY() + 1, this.getX() + this.width, this.getY() + this.height - 1, this.isFocused() ? 0xffffffff : 0xffa0a0a0);
         fill(poseStack, this.getX() + 1, this.getY() + 1, this.getX() + this.width - 1, this.getY() + this.height - 1, 0xff555555);
     }

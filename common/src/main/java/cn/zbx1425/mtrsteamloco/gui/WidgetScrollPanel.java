@@ -6,19 +6,27 @@ import mtr.mappings.Text;
 import net.minecraft.client.gui.GuiGraphics;
 #endif
 import net.minecraft.client.gui.components.AbstractWidget;
+#if MC_VERSION >= "11700"
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+#endif
 
 import java.util.ArrayList;
-import java.util.List;
 
-public class WidgetScrollList extends AbstractScrollWidget {
+public class WidgetScrollPanel extends AbstractScrollWidget {
 
     public final ArrayList<AbstractWidget> children = new ArrayList<>();
     private AbstractWidget focusedChild = null;
 
-    public WidgetScrollList(int x, int y, int w, int h) {
+    public WidgetScrollPanel(int x, int y, int w, int h) {
         super(x, y, w, h, Text.literal(""));
     }
+
+    @Override
+#if MC_VERSION >= "12000"
+    protected void renderBackground(GuiGraphics guiGraphics) { }
+#else
+    protected void renderBackground(PoseStack poseStack) { }
+#endif
 
     @Override
 #if MC_VERSION >= "12000"
@@ -41,13 +49,24 @@ public class WidgetScrollList extends AbstractScrollWidget {
             double cy = mouseY + getOffset() - this.getY();
             for (AbstractWidget widget : new ArrayList<>(children)) {
                 if (widget.mouseClicked(cx, cy, button)) {
-                    focusedChild = widget;
+                    setChildFocus(widget);
+                    this.setFocused(true);
                     return true;
                 }
             }
-            focusedChild = null;
+            setChildFocus(null);
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    private void setChildFocus(AbstractWidget child) {
+        if (focusedChild != null && focusedChild != child) {
+            focusedChild.setFocused(false);
+        }
+        focusedChild = child;
+        if (focusedChild != null) {
+            focusedChild.setFocused(true);
+        }
     }
 
     @Override
@@ -129,13 +148,11 @@ public class WidgetScrollList extends AbstractScrollWidget {
         this.height = height;
     }
 
-
 #if MC_VERSION >= "11903"
     @Override
     protected void updateWidgetNarration(NarrationElementOutput narrationElementOutput) { }
 #elif MC_VERSION >= "11700"
     @Override
     public void updateNarration(NarrationElementOutput arg) { }
-
 #endif
 }

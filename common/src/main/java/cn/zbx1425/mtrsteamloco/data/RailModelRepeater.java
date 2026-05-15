@@ -21,6 +21,29 @@ import java.util.*;
 
 public class RailModelRepeater {
 
+    public static class InstanceModelOverride {
+        public String modelKeyOverride = "";
+        public float offsetX = 0;
+        public float offsetY = 0;
+        public float offsetZ = 0;
+        public boolean reversed = false;
+
+        public boolean isDefault() {
+            return modelKeyOverride.isEmpty() && offsetX == 0 && offsetY == 0 && offsetZ == 0
+                    && !reversed;
+        }
+
+        public InstanceModelOverride copy() {
+            InstanceModelOverride c = new InstanceModelOverride();
+            c.modelKeyOverride = this.modelKeyOverride;
+            c.offsetX = this.offsetX;
+            c.offsetY = this.offsetY;
+            c.offsetZ = this.offsetZ;
+            c.reversed = this.reversed;
+            return c;
+        }
+    }
+
     public String modelKey;
     public RepeaterMode repeaterMode;
     public float offset;
@@ -28,6 +51,7 @@ public class RailModelRepeater {
     public boolean reversed;
     public float intervalOverride;
     public List<Float> manualPositions;
+    public Map<Integer, InstanceModelOverride> instanceOverrides;
 
     public RailModelRepeater() {
         this.modelKey = "";
@@ -37,6 +61,7 @@ public class RailModelRepeater {
         this.reversed = false;
         this.intervalOverride = 0;
         this.manualPositions = Collections.emptyList();
+        this.instanceOverrides = new HashMap<>();
     }
 
     public RailModelRepeater(String modelKey, boolean reversed) {
@@ -54,6 +79,10 @@ public class RailModelRepeater {
         copy.reversed = this.reversed;
         copy.intervalOverride = this.intervalOverride;
         copy.manualPositions = new ArrayList<>(this.manualPositions);
+        copy.instanceOverrides = new HashMap<>();
+        for (Map.Entry<Integer, InstanceModelOverride> e : this.instanceOverrides.entrySet()) {
+            copy.instanceOverrides.put(e.getKey(), e.getValue().copy());
+        }
         return copy;
     }
 
@@ -63,7 +92,12 @@ public class RailModelRepeater {
                 && offsetFromStart
                 && !reversed
                 && intervalOverride == 0
-                && manualPositions.isEmpty();
+                && manualPositions.isEmpty()
+                && instanceOverrides.isEmpty();
+    }
+
+    public void pruneOverrides(int positionCount) {
+        instanceOverrides.entrySet().removeIf(e -> e.getKey() < 0 || e.getKey() >= positionCount);
     }
 
     public float resolveInterval(RailModelProperties properties) {
@@ -71,7 +105,12 @@ public class RailModelRepeater {
     }
 
     public void toMessagePack(MessagePacker packer) throws IOException {
-        packer.packMapHeader(7);
+        Map<Integer, InstanceModelOverride> nonDefault = new HashMap<>();
+        for (Map.Entry<Integer, InstanceModelOverride> e : instanceOverrides.entrySet()) {
+            if (!e.getValue().isDefault()) nonDefault.put(e.getKey(), e.getValue());
+        }
+
+        packer.packMapHeader(nonDefault.isEmpty() ? 7 : 8);
         packer.packString("model_key").packString(modelKey);
         packer.packString("mode").packInt(repeaterMode.ordinal());
         packer.packString("offset").packFloat(offset);
@@ -81,6 +120,19 @@ public class RailModelRepeater {
         packer.packString("manual_positions").packArrayHeader(manualPositions.size());
         for (float pos : manualPositions) {
             packer.packFloat(pos);
+        }
+        if (!nonDefault.isEmpty()) {
+            packer.packString("instance_overrides").packMapHeader(nonDefault.size());
+            for (Map.Entry<Integer, InstanceModelOverride> e : nonDefault.entrySet()) {
+                packer.packInt(e.getKey());
+                InstanceModelOverride ov = e.getValue();
+                packer.packMapHeader(5);
+                packer.packString("mk").packString(ov.modelKeyOverride);
+                packer.packString("ox").packFloat(ov.offsetX);
+                packer.packString("oy").packFloat(ov.offsetY);
+                packer.packString("oz").packFloat(ov.offsetZ);
+                packer.packString("rv").packBoolean(ov.reversed);
+            }
         }
     }
 
@@ -117,6 +169,24 @@ public class RailModelRepeater {
                     }
                     repeater.manualPositions = positions;
                     break;
+                case "instance_overrides":
+                    MapValue ovMap = val.asMapValue();
+                    for (Map.Entry<Value, Value> ovEntry : ovMap.entrySet()) {
+                        int idx = ovEntry.getKey().asIntegerValue().asInt();
+                        MapValue ovData = ovEntry.getValue().asMapValue();
+                        InstanceModelOverride ov = new InstanceModelOverride();
+                        for (Map.Entry<Value, Value> field : ovData.entrySet()) {
+                            switch (field.getKey().asStringValue().asString()) {
+                                case "mk": ov.modelKeyOverride = field.getValue().asStringValue().asString(); break;
+                                case "ox": ov.offsetX = field.getValue().asFloatValue().toFloat(); break;
+                                case "oy": ov.offsetY = field.getValue().asFloatValue().toFloat(); break;
+                                case "oz": ov.offsetZ = field.getValue().asFloatValue().toFloat(); break;
+                                case "rv": ov.reversed = field.getValue().asBooleanValue().getBoolean(); break;
+                            }
+                        }
+                        if (!ov.isDefault()) repeater.instanceOverrides.put(idx, ov);
+                    }
+                    break;
             }
         }
         return repeater;
@@ -132,6 +202,19 @@ public class RailModelRepeater {
         packet.writeVarInt(manualPositions.size());
         for (float pos : manualPositions) {
             packet.writeFloat(pos);
+        }
+        Map<Integer, InstanceModelOverride> nonDefault = new HashMap<>();
+        for (Map.Entry<Integer, InstanceModelOverride> e : instanceOverrides.entrySet()) {
+            if (!e.getValue().isDefault()) nonDefault.put(e.getKey(), e.getValue());
+        }
+        packet.writeVarInt(nonDefault.size());
+        for (Map.Entry<Integer, InstanceModelOverride> e : nonDefault.entrySet()) {
+            packet.writeVarInt(e.getKey());
+            packet.writeUtf(e.getValue().modelKeyOverride);
+            packet.writeFloat(e.getValue().offsetX);
+            packet.writeFloat(e.getValue().offsetY);
+            packet.writeFloat(e.getValue().offsetZ);
+            packet.writeBoolean(e.getValue().reversed);
         }
     }
 
@@ -149,6 +232,17 @@ public class RailModelRepeater {
             positions.add(packet.readFloat());
         }
         repeater.manualPositions = positions;
+        int ovCount = packet.readVarInt();
+        for (int i = 0; i < ovCount; i++) {
+            int idx = packet.readVarInt();
+            InstanceModelOverride ov = new InstanceModelOverride();
+            ov.modelKeyOverride = packet.readUtf();
+            ov.offsetX = packet.readFloat();
+            ov.offsetY = packet.readFloat();
+            ov.offsetZ = packet.readFloat();
+            ov.reversed = packet.readBoolean();
+            if (!ov.isDefault()) repeater.instanceOverrides.put(idx, ov);
+        }
         return repeater;
     }
 
