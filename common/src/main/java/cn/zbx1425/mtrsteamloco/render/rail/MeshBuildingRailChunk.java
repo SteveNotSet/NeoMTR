@@ -1,5 +1,6 @@
 package cn.zbx1425.mtrsteamloco.render.rail;
 
+import cn.zbx1425.mtrsteamloco.data.RailModelProperties;
 import cn.zbx1425.mtrsteamloco.data.RailModelRegistry;
 import cn.zbx1425.sowcer.batch.BatchManager;
 import cn.zbx1425.sowcer.batch.EnqueueProp;
@@ -39,9 +40,14 @@ public class MeshBuildingRailChunk extends RailChunkBase {
             .set(VertAttrType.MATRIX_MODEL, VertAttrSrc.GLOBAL)
             .build();
 
-    protected MeshBuildingRailChunk(Long chunkId, String modelKey) {
-        super(chunkId, modelKey);
-        this.railModel = RailModelRegistry.getProperty(modelKey).rawModel;
+    protected MeshBuildingRailChunk(Long chunkId, ModelRef modelRef) {
+        super(chunkId, modelRef);
+        RailModelProperties props = RailModelRegistry.getProperty(modelRef.typeKey);
+        if (props.getModelCount() > 0) {
+            this.railModel = props.rawModels.get(modelRef.modelIndex % props.getModelCount());
+        } else {
+            this.railModel = null;
+        }
     }
 
     @Override

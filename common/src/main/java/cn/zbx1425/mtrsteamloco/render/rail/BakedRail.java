@@ -14,8 +14,8 @@ public class BakedRail {
 
     public record TransformOnBoundary(long dedupHash, Matrix4f matrix) {}
 
-    public Map<String, HashMap<Long, ArrayList<Matrix4f>>> interiorModelsByChunks = new HashMap<>();
-    public Map<String, HashMap<Long, ArrayList<TransformOnBoundary>>> boundaryModelsByChunks = new HashMap<>();
+    public Map<ModelRef, HashMap<Long, ArrayList<Matrix4f>>> interiorModelsByChunks = new HashMap<>();
+    public Map<ModelRef, HashMap<Long, ArrayList<TransformOnBoundary>>> boundaryModelsByChunks = new HashMap<>();
 
     public static final int POS_SHIFT = 1;
 
@@ -32,13 +32,14 @@ public class BakedRail {
         double railLength = rail.getLength();
 
         for (RailModelRepeater repeater : repeaters) {
-            String resolvedKey = RailRenderDispatcher.getModelKeyForRender(rail, repeater.modelKey);
-            if (resolvedKey.equals("null") || resolvedKey.isEmpty()) continue;
+            if (repeater.attachments.isEmpty()) continue;
 
-            RailModelProperties props = RailModelRegistry.getProperty(resolvedKey);
-            float interval = repeater.resolveInterval(props);
+            // Resolve interval from first attachment's model type
+            String primaryTypeKey = RailRenderDispatcher.getModelKeyForRender(rail, repeater.getPrimaryModelTypeKey());
+            if (primaryTypeKey.equals("null") || primaryTypeKey.isEmpty()) continue;
 
-            boolean effectiveReversed = isSecondaryDir ^ repeater.reversed;
+            RailModelProperties primaryProps = RailModelRegistry.getProperty(primaryTypeKey);
+            float interval = repeater.resolveInterval(primaryProps);
 
             PositionResult posResult = computePositions(
                     repeater, railLength, interval, canonStart, canonEnd);
@@ -52,75 +53,87 @@ public class BakedRail {
                 case MANUAL -> 0;
             };
 
+            int totalPositions = posResult.interior.size() + posResult.boundary.size();
+
             for (IndexedPosition ip : posResult.interior) {
-                RailModelRepeater.InstanceModelOverride override =
-                        repeater.instanceOverrides.get(ip.originalIndex);
-
-                String instanceKey = resolvedKey;
-                RailModelProperties instanceProps = props;
-                if (override != null && !override.modelKeyOverride.isEmpty()) {
-                    String overrideResolved = RailRenderDispatcher.getModelKeyForRender(rail, override.modelKeyOverride);
-                    if (!overrideResolved.equals("null") && !overrideResolved.isEmpty()) {
-                        instanceKey = overrideResolved;
-                        instanceProps = RailModelRegistry.getProperty(overrideResolved);
-                    }
-                }
-
-                boolean instanceEffectiveReversed = effectiveReversed ^ (override != null && override.reversed);
-                HashMap<Long, ArrayList<Matrix4f>> chunks =
-                        interiorModelsByChunks.computeIfAbsent(instanceKey, k -> new HashMap<>());
-                addInteriorMatrix(rail, ip.tCanon, isCanonical, railLength,
-                    instanceProps, interval, instanceEffectiveReversed, chordHalfSpan, override, chunks);
+                List<RepeaterAttachment> effectiveAttachments = resolveAttachments(repeater, ip.originalIndex);
+                placeAttachments(rail, ip.tCanon, isCanonical, isSecondaryDir, railLength,
+                        chordHalfSpan, interval, effectiveAttachments,
+                        ip.originalIndex, totalPositions, repeater.offsetFromStart, true, 0, canonStart);
             }
-            for (BoundaryPosition np : posResult.boundary) {
-                RailModelRepeater.InstanceModelOverride override =
-                        repeater.instanceOverrides.get(np.originalIndex);
-
-                String instanceKey = resolvedKey;
-                RailModelProperties instanceProps = props;
-                if (override != null && !override.modelKeyOverride.isEmpty()) {
-                    String overrideResolved = RailRenderDispatcher.getModelKeyForRender(rail, override.modelKeyOverride);
-                    if (!overrideResolved.equals("null") && !overrideResolved.isEmpty()) {
-                        instanceKey = overrideResolved;
-                        instanceProps = RailModelRegistry.getProperty(overrideResolved);
-                    }
-                }
-
-                boolean instanceReversed = effectiveReversed ^ (override != null && override.reversed);
-                Matrix4f mat = computeMatrix(rail, np.tCanon, isCanonical, railLength,
-                    instanceProps, interval, instanceReversed, chordHalfSpan, override);
-                Vec3 pos = rail.getPosition(isCanonical ? np.tCanon : (railLength - np.tCanon));
-                long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
-                HashMap<Long, ArrayList<TransformOnBoundary>> nChunks =
-                        boundaryModelsByChunks.computeIfAbsent(instanceKey, k -> new HashMap<>());
-                nChunks.computeIfAbsent(chunkId, ignored -> new ArrayList<>())
-                        .add(new TransformOnBoundary(
-                            np.blockPosHash ^ (repeater.reversed ? Long.MIN_VALUE : 0), mat));
+            for (BoundaryPosition bp : posResult.boundary) {
+                List<RepeaterAttachment> effectiveAttachments = resolveAttachments(repeater, bp.originalIndex);
+                placeAttachments(rail, bp.tCanon, isCanonical, isSecondaryDir, railLength,
+                        chordHalfSpan, interval, effectiveAttachments,
+                        bp.originalIndex, totalPositions, repeater.offsetFromStart, false, bp.blockPosHash, canonStart);
             }
         }
+    }
+
+    private List<RepeaterAttachment> resolveAttachments(RailModelRepeater repeater, int positionIndex) {
+        RailModelInstanceOverride override = repeater.instanceOverrides.get(positionIndex);
+        if (override != null && !override.isEmpty()) return override.attachments;
+        return repeater.attachments;
+    }
+
+    private void placeAttachments(Rail rail, double tCanon, boolean isCanonical, boolean isSecondaryDir,
+                                  double railLength, double chordHalfSpan, float interval,
+                                  List<RepeaterAttachment> attachments,
+                                  int positionIndex, int totalPositions, boolean offsetFromStart,
+                                  boolean isInterior, long blockPosHash, BlockPos canonStart) {
+        for (RepeaterAttachment attachment : attachments) {
+            String resolvedTypeKey = RailRenderDispatcher.getModelKeyForRender(rail, attachment.modelTypeKey);
+            if (resolvedTypeKey.equals("null") || resolvedTypeKey.isEmpty()) continue;
+
+            RailModelProperties props = RailModelRegistry.getProperty(resolvedTypeKey);
+            if (props.getModelCount() == 0) continue;
+
+            int modelIndex = computeModelIndex(attachment, positionIndex, totalPositions,
+                    offsetFromStart, props.getModelCount());
+
+            boolean effectiveReversed = isSecondaryDir ^ attachment.reversed;
+
+            ModelRef modelRef = new ModelRef(resolvedTypeKey, modelIndex);
+
+            Matrix4f mat = computeMatrix(rail, tCanon, isCanonical, railLength,
+                    props, chordHalfSpan, attachment, offsetFromStart, effectiveReversed);
+
+            if (isInterior) {
+                double tLocal = isCanonical ? tCanon : (railLength - tCanon);
+                Vec3 pos = rail.getPosition(tLocal);
+                long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
+                HashMap<Long, ArrayList<Matrix4f>> chunks =
+                        interiorModelsByChunks.computeIfAbsent(modelRef, k -> new HashMap<>());
+                chunks.computeIfAbsent(chunkId, ignored -> new ArrayList<>()).add(mat);
+            } else {
+                double tLocal = isCanonical ? tCanon : (railLength - tCanon);
+                Vec3 pos = rail.getPosition(tLocal);
+                long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
+                HashMap<Long, ArrayList<TransformOnBoundary>> nChunks =
+                        boundaryModelsByChunks.computeIfAbsent(modelRef, k -> new HashMap<>());
+                long dedupHash = blockPosHash ^ (attachment.reversed ? Long.MIN_VALUE : 0)
+                        ^ ((long) attachment.modelTypeKey.hashCode() << 16);
+                nChunks.computeIfAbsent(chunkId, ignored -> new ArrayList<>())
+                        .add(new TransformOnBoundary(dedupHash, mat));
+            }
+        }
+    }
+
+    private int computeModelIndex(RepeaterAttachment attachment, int positionIndex, int totalPositions,
+                                  boolean offsetFromStart, int modelCount) {
+        int effectiveIndex = offsetFromStart ? positionIndex : (totalPositions - 1 - positionIndex);
+        int fmi = attachment.firstModelIndex % modelCount;
+        return (fmi + effectiveIndex) % modelCount;
     }
 
     private record IndexedPosition(double tCanon, int originalIndex) {}
     private record BoundaryPosition(double tCanon, long blockPosHash, int originalIndex) {}
     private record PositionResult(List<IndexedPosition> interior, List<BoundaryPosition> boundary) {}
 
-    private void addInteriorMatrix(Rail rail, double tCanon, boolean isCanonical,
-                                   double railLength, RailModelProperties props, float interval,
-                                   boolean effectiveReversed, double chordHalfSpan,
-                                   RailModelRepeater.InstanceModelOverride override,
-                                   HashMap<Long, ArrayList<Matrix4f>> chunks) {
-        Matrix4f mat = computeMatrix(rail, tCanon, isCanonical, railLength,
-            props, interval, effectiveReversed, chordHalfSpan, override);
-        double tLocal = isCanonical ? tCanon : (railLength - tCanon);
-        Vec3 pos = rail.getPosition(tLocal);
-        long chunkId = chunkIdFromWorldPos(Mth.floor((float) pos.x), Mth.floor((float) pos.z));
-        chunks.computeIfAbsent(chunkId, ignored -> new ArrayList<>()).add(mat);
-    }
-
     private Matrix4f computeMatrix(Rail rail, double tCanon, boolean isCanonical,
-                                   double railLength, RailModelProperties props, float interval,
-                                   boolean effectiveReversed, double chordHalfSpan,
-                                   RailModelRepeater.InstanceModelOverride override) {
+                                   double railLength, RailModelProperties props,
+                                   double chordHalfSpan, RepeaterAttachment attachment,
+                                   boolean offsetFromStart, boolean effectiveReversed) {
         double tLocal = isCanonical ? tCanon : (railLength - tCanon);
         Vec3 pos = rail.getPosition(tLocal);
 
@@ -150,9 +163,21 @@ public class BakedRail {
         float yf = yc + (props.tiltToGradient ? (float)(pB.y - pA.y) : 0);
         float zf = zc + (float)(pB.z - pA.z);
 
-        Matrix4f mat = getLookAtMat(xc, yc, zc, xf, yf, zf, effectiveReversed);
-        if (override != null) {
-            mat.translate(override.offsetX, override.offsetY, override.offsetZ);
+        // Offset is applied in the offsetFromStart-aligned coordinate system.
+        // Tangent (pB-pA) points posStart→posEnd = canonical direction iff isCanonical.
+        // Need to flip tangent to get offsetFromStart direction when they differ.
+        boolean needFlipForOffset = isCanonical != offsetFromStart;
+
+        Matrix4f mat = getLookAtMat(xc, yc, zc, xf, yf, zf, needFlipForOffset);
+        if (attachment.offsetX != 0 || attachment.offsetY != 0 || attachment.offsetZ != 0) {
+            mat.translate(attachment.offsetX, attachment.offsetY, attachment.offsetZ);
+        }
+
+        // Additional rotation to reach the final model orientation.
+        // Uses identity: RotY(a) * RotX(p) * RotY(π) = RotY(a+π) * RotX(-p)
+        boolean needAdditionalPi = effectiveReversed != needFlipForOffset;
+        if (needAdditionalPi) {
+            mat.rotateY((float) Math.PI);
         }
         return mat;
     }

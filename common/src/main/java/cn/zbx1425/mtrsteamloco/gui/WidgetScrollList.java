@@ -52,12 +52,13 @@ public class WidgetScrollList extends AbstractScrollWidget {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (super.mouseDragged(mouseX, mouseY, button, dragX, dragY)) return true;
         double cx = mouseX - this.getX();
         double cy = mouseY + getOffset() - this.getY();
         for (AbstractWidget widget : new ArrayList<>(children)) {
             if (widget.mouseDragged(cx, cy, button, dragX, dragY)) return true;
         }
-        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+        return false;
     }
 
     @Override

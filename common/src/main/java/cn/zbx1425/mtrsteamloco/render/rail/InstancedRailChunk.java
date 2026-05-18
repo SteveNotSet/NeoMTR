@@ -1,6 +1,5 @@
 package cn.zbx1425.mtrsteamloco.render.rail;
 
-import cn.zbx1425.mtrsteamloco.data.RailModelRegistry;
 import cn.zbx1425.mtrsteamloco.render.ByteBufferOutputStream;
 import cn.zbx1425.sowcer.batch.BatchManager;
 import cn.zbx1425.sowcer.batch.EnqueueProp;
@@ -45,9 +44,9 @@ public class InstancedRailChunk extends RailChunkBase {
             .set(VertAttrType.MATRIX_MODEL, VertAttrSrc.INSTANCE_BUF)
             .build();
 
-    public InstancedRailChunk(Long chunkId, String modelKey) {
-        super(chunkId, modelKey);
-        Model railModel = RailModelRegistry.getProperty(modelKey).uploadedModel;
+    public InstancedRailChunk(Long chunkId, ModelRef modelRef) {
+        super(chunkId, modelRef);
+        Model railModel = modelRef.getModel();
         if (railModel != null) {
             instanceBuf = new InstanceBuf(0);
             vertArrays = VertArrays.createAll(railModel, RAIL_MAPPING, instanceBuf);

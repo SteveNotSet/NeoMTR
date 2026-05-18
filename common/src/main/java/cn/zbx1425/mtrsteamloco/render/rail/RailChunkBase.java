@@ -1,6 +1,5 @@
 package cn.zbx1425.mtrsteamloco.render.rail;
 
-import cn.zbx1425.mtrsteamloco.data.RailModelRegistry;
 import cn.zbx1425.sowcer.batch.BatchManager;
 import cn.zbx1425.sowcer.batch.ShaderProp;
 import cn.zbx1425.sowcer.math.Matrix4f;
@@ -19,7 +18,7 @@ public abstract class RailChunkBase implements Closeable {
     public AABB boundingBox;
     public HashMap<BakedRail, RailTranformList> containingRails = new HashMap<>();
 
-    public final String modelKey;
+    public final ModelRef modelRef;
 
     protected float modelYMin;
     protected float modelYMax;
@@ -28,10 +27,10 @@ public abstract class RailChunkBase implements Closeable {
     public boolean bufferBuilt = false;
     public double cameraDistManhattanXZ = 0;
 
-    public RailChunkBase(long chunkId, String modelKey) {
+    public RailChunkBase(long chunkId, ModelRef modelRef) {
         this.chunkId = chunkId;
-        this.modelKey = modelKey;
-        long boundary = RailModelRegistry.getProperty(modelKey).boundingBox;
+        this.modelRef = modelRef;
+        Long boundary = modelRef.getBoundingBox();
         modelYMin = Float.intBitsToFloat((int)(boundary >> 32));
         modelYMax = Float.intBitsToFloat((int)(boundary & 0xFFFFFFFFL));
         setBoundingBox(0, 0);
@@ -45,7 +44,7 @@ public abstract class RailChunkBase implements Closeable {
                 posXMin + span, yMax + modelYMax + 1, posZMin + span);
     }
 
-    public boolean isEven() { // Just for ease of debugging to show a checkerboard pattern.
+    public boolean isEven() {
         return ((int)(chunkId >> 32) + (int)(chunkId & 0xFFFFFFFFL)) % 2 == 0;
     }
 
@@ -63,16 +62,16 @@ public abstract class RailChunkBase implements Closeable {
         return cameraDistManhattanXZ;
     }
 
-    public void addRail(BakedRail rail, String modelKey) {
+    public void addRail(BakedRail rail, ModelRef modelRef) {
         ArrayList<Matrix4f> interior = new ArrayList<>();
         ArrayList<BakedRail.TransformOnBoundary> boundary = new ArrayList<>();
 
-        HashMap<Long, ArrayList<Matrix4f>> interiorChunks = rail.interiorModelsByChunks.get(modelKey);
+        HashMap<Long, ArrayList<Matrix4f>> interiorChunks = rail.interiorModelsByChunks.get(modelRef);
         if (interiorChunks != null) {
             ArrayList<Matrix4f> matrices = interiorChunks.get(chunkId);
             if (matrices != null) interior.addAll(matrices);
         }
-        HashMap<Long, ArrayList<BakedRail.TransformOnBoundary>> boundaryChunks = rail.boundaryModelsByChunks.get(modelKey);
+        HashMap<Long, ArrayList<BakedRail.TransformOnBoundary>> boundaryChunks = rail.boundaryModelsByChunks.get(modelRef);
         if (boundaryChunks != null) {
             ArrayList<BakedRail.TransformOnBoundary> boundaryMatrices = boundaryChunks.get(chunkId);
             if (boundaryMatrices != null) boundary.addAll(boundaryMatrices);
@@ -84,7 +83,7 @@ public abstract class RailChunkBase implements Closeable {
         }
     }
 
-    public void removeRail(BakedRail rail, String modelKey) {
+    public void removeRail(BakedRail rail, ModelRef modelRef) {
         containingRails.remove(rail);
         isDirty = true;
     }

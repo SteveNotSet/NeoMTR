@@ -4,7 +4,6 @@ import cn.zbx1425.mtrsteamloco.Main;
 import cn.zbx1425.mtrsteamloco.MainClient;
 import cn.zbx1425.mtrsteamloco.render.integration.MtrModelRegistryUtil;
 import cn.zbx1425.sowcer.math.Vector3f;
-import cn.zbx1425.sowcer.model.Model;
 import cn.zbx1425.sowcerext.model.ModelCluster;
 import cn.zbx1425.sowcerext.model.RawModel;
 import com.google.gson.JsonArray;
@@ -14,7 +13,6 @@ import com.google.gson.JsonParser;
 import com.mojang.datafixers.util.Pair;
 import mtr.mappings.Text;
 import mtr.mappings.Utilities;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -24,10 +22,7 @@ import org.apache.commons.io.IOUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 
 public class RailModelRegistry {
 
@@ -43,10 +38,10 @@ public class RailModelRegistry {
         elements.clear();
 
         //
-        register("", new RailModelProperties(Text.translatable("rail.mtrsteamloco.default"), null, 1f,
+        register("", new RailModelProperties(Text.translatable("rail.mtrsteamloco.default"), (RawModel) null, 1f,
             0f, true));
         // This is pulled from registry and shouldn't be shown
-        register("null", new RailModelProperties(Text.translatable("rail.mtrsteamloco.hidden"), null, Float.MAX_VALUE,
+        register("null", new RailModelProperties(Text.translatable("rail.mtrsteamloco.hidden"), (RawModel) null, Float.MAX_VALUE,
             0f, true));
 
         try {
@@ -64,7 +59,7 @@ public class RailModelRegistry {
             try {
                 try (InputStream is = Utilities.getInputStream(pair.getSecond())) {
                     JsonObject rootObj = (new JsonParser()).parse(IOUtils.toString(is, StandardCharsets.UTF_8)).getAsJsonObject();
-                    if (rootObj.has("model")) {
+                    if (rootObj.has("model") || rootObj.has("models")) {
                         String key = FilenameUtils.getBaseName(pair.getFirst().getPath());
                         register(key, loadFromJson(resourceManager, key, rootObj));
                     } else {
@@ -85,7 +80,7 @@ public class RailModelRegistry {
     }
 
     private static final RailModelProperties EMPTY_PROPERTY = new RailModelProperties(
-            Text.literal(""), null, 1f, 0, true
+            Text.literal(""), (RawModel) null, 1f, 0, true
     );
 
     public static RailModelProperties getProperty(String key) {
@@ -95,10 +90,31 @@ public class RailModelRegistry {
     private static RailModelProperties loadFromJson(ResourceManager resourceManager, String key, JsonObject obj) throws IOException {
         if (obj.has("atlasIndex")) {
             MainClient.atlasManager.load(
-                    MtrModelRegistryUtil.resourceManager,  ResourceLocation.parse(obj.get("atlasIndex").getAsString())
+                    MtrModelRegistryUtil.resourceManager, ResourceLocation.parse(obj.get("atlasIndex").getAsString())
             );
         }
 
+        float repeatInterval = obj.has("repeatInterval") ? obj.get("repeatInterval").getAsFloat() : 0.5f;
+        float yOffset = obj.has("yOffset") ? obj.get("yOffset").getAsFloat() : 0f;
+        boolean tiltToGradient = !obj.has("tiltToGradient") || obj.get("tiltToGradient").getAsBoolean();
+
+        List<RawModel> rawModels;
+        if (obj.has("models")) {
+            JsonArray modelsArr = obj.get("models").getAsJsonArray();
+            rawModels = new ArrayList<>(modelsArr.size());
+            for (int i = 0; i < modelsArr.size(); i++) {
+                JsonObject modelObj = modelsArr.get(i).getAsJsonObject();
+                rawModels.add(loadSingleModel(resourceManager, key + "#" + i, modelObj));
+            }
+        } else {
+            rawModels = Collections.singletonList(loadSingleModel(resourceManager, key, obj));
+        }
+
+        return new RailModelProperties(Text.translatable(obj.get("name").getAsString()), rawModels, repeatInterval,
+                yOffset, tiltToGradient);
+    }
+
+    private static RawModel loadSingleModel(ResourceManager resourceManager, String sourceKey, JsonObject obj) throws IOException {
         RawModel rawModel = MainClient.modelManager.loadRawModel(resourceManager,
                 ResourceLocation.parse(obj.get("model").getAsString()), MainClient.atlasManager).copy();
 
@@ -131,14 +147,7 @@ public class RailModelRegistry {
             );
         }
 
-        rawModel.sourceLocation = ResourceLocation.parse(rawModel.sourceLocation.toString() + "/" + key);
-
-        float repeatInterval = obj.has("repeatInterval") ? obj.get("repeatInterval").getAsFloat() : 0.5f;
-        float yOffset = obj.has("yOffset") ? obj.get("yOffset").getAsFloat() : 0f;
-
-        boolean tiltToGradient = !obj.has("tiltToGradient") || obj.get("tiltToGradient").getAsBoolean();
-
-        return new RailModelProperties(Text.translatable(obj.get("name").getAsString()), rawModel, repeatInterval,
-            yOffset, tiltToGradient);
+        rawModel.sourceLocation = ResourceLocation.parse(rawModel.sourceLocation.toString() + "/" + sourceKey);
+        return rawModel;
     }
 }

@@ -619,10 +619,16 @@ public class PacketTrainDataGuiServer extends PacketTrainDataBase {
 		final BlockPos railStart = packet.readBlockPos();
 		final BlockPos railEnd = packet.readBlockPos();
 		final int repeaterIndex = packet.readVarInt();
-		final String modelKey = packet.readUtf();
+		final String repeaterId = packet.readUtf();
 		final float interval = packet.readFloat();
-		final boolean reversed = packet.readBoolean();
 		final float offset = packet.readFloat();
+		final int attachmentCount = packet.readVarInt();
+		final int[] modelCounts = new int[attachmentCount];
+		final int[] initialFMI = new int[attachmentCount];
+		for (int i = 0; i < attachmentCount; i++) {
+			modelCounts[i] = packet.readVarInt();
+			initialFMI[i] = packet.readVarInt();
+		}
 
 		minecraftServer.execute(() -> {
 			final Level world = player.level();
@@ -631,7 +637,8 @@ public class PacketTrainDataGuiServer extends PacketTrainDataBase {
 
 			RailModelRepeater
 					.propagate(railwayData, player, railStart, railEnd,
-							repeaterIndex, modelKey, interval, reversed, offset);
+							repeaterIndex, repeaterId, interval, offset,
+							modelCounts, initialFMI);
 		});
 	}
 

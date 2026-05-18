@@ -35,7 +35,7 @@ import java.util.*;
 public class RailRenderDispatcher {
 
     private final HashMap<Rail, BakedRail> railRefMap = new HashMap<>();
-    private final HashMap<String, HashMap<Long, RailChunkBase>> railChunkMap = new HashMap<>();
+    private final HashMap<ModelRef, HashMap<Long, RailChunkBase>> railChunkMap = new HashMap<>();
     private final List<RailChunkBase> railChunkList = new LinkedList<>();
     private boolean isInstanced;
 
@@ -68,30 +68,27 @@ public class RailRenderDispatcher {
         BakedRail bakedRail = new BakedRail(rail, positions[0], positions[1]);
         railRefMap.put(rail, bakedRail);
 
-        for (Map.Entry<String, HashMap<Long, ArrayList<Matrix4f>>> modelEntry : bakedRail.interiorModelsByChunks.entrySet()) {
-            String modelKey = modelEntry.getKey();
-            registerChunks(bakedRail, modelKey, modelEntry.getValue().keySet());
+        for (Map.Entry<ModelRef, HashMap<Long, ArrayList<Matrix4f>>> modelEntry : bakedRail.interiorModelsByChunks.entrySet()) {
+            registerChunks(bakedRail, modelEntry.getKey(), modelEntry.getValue().keySet());
         }
-        for (Map.Entry<String, HashMap<Long, ArrayList<BakedRail.TransformOnBoundary>>> modelEntry : bakedRail.boundaryModelsByChunks.entrySet()) {
-            String modelKey = modelEntry.getKey();
-            registerChunks(bakedRail, modelKey, modelEntry.getValue().keySet());
+        for (Map.Entry<ModelRef, HashMap<Long, ArrayList<BakedRail.TransformOnBoundary>>> modelEntry : bakedRail.boundaryModelsByChunks.entrySet()) {
+            registerChunks(bakedRail, modelEntry.getKey(), modelEntry.getValue().keySet());
         }
     }
 
-    private void registerChunks(BakedRail bakedRail, String modelKey, java.util.Set<Long> chunkIds) {
-        HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(modelKey);
-        if (chunkMap == null) return;
+    private void registerChunks(BakedRail bakedRail, ModelRef modelRef, java.util.Set<Long> chunkIds) {
+        HashMap<Long, RailChunkBase> chunkMap = railChunkMap.computeIfAbsent(modelRef, k -> new HashMap<>());
         for (long chunkId : chunkIds) {
             if (chunkMap.containsKey(chunkId)) {
-                chunkMap.get(chunkId).addRail(bakedRail, modelKey);
+                chunkMap.get(chunkId).addRail(bakedRail, modelRef);
             } else {
                 RailChunkBase newChunk;
                 if (isInstanced) {
-                    newChunk = new InstancedRailChunk(chunkId, modelKey);
+                    newChunk = new InstancedRailChunk(chunkId, modelRef);
                 } else {
-                    newChunk = new MeshBuildingRailChunk(chunkId, modelKey);
+                    newChunk = new MeshBuildingRailChunk(chunkId, modelRef);
                 }
-                newChunk.addRail(bakedRail, modelKey);
+                newChunk.addRail(bakedRail, modelRef);
                 chunkMap.put(chunkId, newChunk);
                 railChunkList.add(newChunk);
             }
@@ -102,23 +99,21 @@ public class RailRenderDispatcher {
         if (!railRefMap.containsKey(rail)) return;
         BakedRail bakedRail = railRefMap.remove(rail);
 
-        for (Map.Entry<String, HashMap<Long, ArrayList<Matrix4f>>> modelEntry : bakedRail.interiorModelsByChunks.entrySet()) {
-            String modelKey = modelEntry.getKey();
-            unregisterChunks(bakedRail, modelKey, modelEntry.getValue().keySet());
+        for (Map.Entry<ModelRef, HashMap<Long, ArrayList<Matrix4f>>> modelEntry : bakedRail.interiorModelsByChunks.entrySet()) {
+            unregisterChunks(bakedRail, modelEntry.getKey(), modelEntry.getValue().keySet());
         }
-        for (Map.Entry<String, HashMap<Long, ArrayList<BakedRail.TransformOnBoundary>>> modelEntry : bakedRail.boundaryModelsByChunks.entrySet()) {
-            String modelKey = modelEntry.getKey();
-            unregisterChunks(bakedRail, modelKey, modelEntry.getValue().keySet());
+        for (Map.Entry<ModelRef, HashMap<Long, ArrayList<BakedRail.TransformOnBoundary>>> modelEntry : bakedRail.boundaryModelsByChunks.entrySet()) {
+            unregisterChunks(bakedRail, modelEntry.getKey(), modelEntry.getValue().keySet());
         }
     }
 
-    private void unregisterChunks(BakedRail bakedRail, String modelKey, java.util.Set<Long> chunkIds) {
-        HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(modelKey);
+    private void unregisterChunks(BakedRail bakedRail, ModelRef modelRef, java.util.Set<Long> chunkIds) {
+        HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(modelRef);
         if (chunkMap == null) return;
         for (long chunkId : chunkIds) {
             RailChunkBase chunk = chunkMap.get(chunkId);
             if (chunk != null) {
-                chunk.removeRail(bakedRail, modelKey);
+                chunk.removeRail(bakedRail, modelRef);
             }
         }
     }
@@ -140,9 +135,6 @@ public class RailRenderDispatcher {
         }
         railChunkMap.clear();
         railChunkList.clear();
-        for (String key : RailModelRegistry.elements.keySet()) {
-            railChunkMap.put(key, new HashMap<>());
-        }
     }
 
     public void registerLightUpdate(int x, int yMin, int yMax, int z) {
@@ -203,7 +195,8 @@ public class RailRenderDispatcher {
             if (chunk.containingRails.isEmpty()) {
                 chunk.close();
                 it.remove();
-                railChunkMap.get(chunk.modelKey).remove(chunk.chunkId);
+                HashMap<Long, RailChunkBase> chunkMap = railChunkMap.get(chunk.modelRef);
+                if (chunkMap != null) chunkMap.remove(chunk.chunkId);
                 continue;
             }
             if (isOutsideRenderDistance) continue;
@@ -257,6 +250,7 @@ public class RailRenderDispatcher {
     // "null": hidden, "": use MTR's default pipeline
     public static String getModelKeyForRender(Rail rail, String customModelKey) {
         if (customModelKey.equals("") || !RailModelRegistry.elements.containsKey(customModelKey)) {
+            if (rail == null) return "";
             if (rail.transportMode == TransportMode.TRAIN) {
                 if (rail.railType == RailType.SIDING) {
                     return "nte_builtin_depot";
@@ -280,7 +274,7 @@ public class RailRenderDispatcher {
         if (railExtra.getRepeaters().isEmpty()) {
             return isHoldingMtrRailRelated;
         } else if (railExtra.getRepeaters().size() == 1) {
-            if (railExtra.getRepeaters().getFirst().modelKey.isEmpty()) {
+            if (railExtra.getRepeaters().getFirst().getPrimaryModelTypeKey().isEmpty()) {
                 return rail.transportMode != TransportMode.TRAIN;
             }
         }

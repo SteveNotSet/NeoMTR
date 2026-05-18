@@ -34,22 +34,24 @@ import java.util.*;
 
 public class RailEditorVisualScreen extends SelectListScreen {
 
-    private enum ModelSelectTarget { NONE, BASE, INSTANCE }
+    private enum ModelSelectTarget { NONE, ATTACHMENT_BASE, ATTACHMENT_INSTANCE }
     private ModelSelectTarget modelSelectTarget = ModelSelectTarget.NONE;
 
     private static Rail pickedRail = null;
     private static BlockPos pickedPosStart = BlockPos.ZERO;
     private static BlockPos pickedPosEnd = BlockPos.ZERO;
 
-    private static String lastEditedModelKey = "";
+    private static String lastEditedRepeaterId = "";
 
     private static BlockPos lastTerminalNode = null;
     private static float lastExitOffset = 0;
-    private static String lastPropagateModelKey = "";
+    private static String lastPropagateRepeaterId = "";
     private static float lastPropagateInterval = 0;
-    private static boolean lastPropagateReversed = false;
+    private static int[] lastExitFMI = new int[0];
 
     private int selectedLayerIndex = 0;
+    private int selectedBaseAttIndex = 0;
+    private int selectedOvAttIndex = 0;
 
     private final WidgetScrollList layerScrollList = new WidgetScrollList(0, 0, 100, 100);
     private final WidgetScrollPanel rightScrollPanel = new WidgetScrollPanel(0, 0, 100, 100);
@@ -78,13 +80,8 @@ public class RailEditorVisualScreen extends SelectListScreen {
             String currentModelKey = "";
             RailModelRepeater sel = getSelectedRepeater();
             if (sel != null) {
-                if (modelSelectTarget == ModelSelectTarget.BASE) {
-                    currentModelKey = sel.modelKey;
-                } else if (modelSelectTarget == ModelSelectTarget.INSTANCE && currentBar != null) {
-                    int idx = currentBar.getSelectedIndex();
-                    RailModelRepeater.InstanceModelOverride ov = sel.instanceOverrides.get(idx);
-                    currentModelKey = ov != null ? ov.modelKeyOverride : "";
-                }
+                RepeaterAttachment att = getTargetAttachment(sel);
+                if (att != null) currentModelKey = att.modelTypeKey;
             }
             String finalKey = currentModelKey;
             scrollList.visible = true;
@@ -96,6 +93,23 @@ public class RailEditorVisualScreen extends SelectListScreen {
         loadEditorPage();
     }
 
+    private RepeaterAttachment getTargetAttachment(RailModelRepeater repeater) {
+        if (modelSelectTarget == ModelSelectTarget.ATTACHMENT_BASE) {
+            if (selectedBaseAttIndex >= 0 && selectedBaseAttIndex < repeater.attachments.size()) {
+                return repeater.attachments.get(selectedBaseAttIndex);
+            }
+        } else if (modelSelectTarget == ModelSelectTarget.ATTACHMENT_INSTANCE && currentBar != null) {
+            int posIdx = currentBar.getSelectedIndex();
+            RailModelInstanceOverride ov = repeater.instanceOverrides.get(
+                    displayIndexToCanonIndex(posIdx, getPositionCount(repeater)));
+            if (ov != null && ov.attachments != null
+                    && selectedOvAttIndex >= 0 && selectedOvAttIndex < ov.attachments.size()) {
+                return ov.attachments.get(selectedOvAttIndex);
+            }
+        }
+        return null;
+    }
+
     private List<RailModelRepeater> getRepeaters() {
         if (pickedRail == null) return new ArrayList<>();
         return ((RailExtraSupplier) pickedRail).getRepeaters();
@@ -104,13 +118,13 @@ public class RailEditorVisualScreen extends SelectListScreen {
     private void autoSelectLayer() {
         List<RailModelRepeater> repeaters = getRepeaters();
         if (repeaters.isEmpty()) return;
-        if (lastEditedModelKey.isEmpty()) {
+        if (lastEditedRepeaterId.isEmpty()) {
             selectedLayerIndex = repeaters.size() - 1;
             return;
         }
         int lastMatch = -1;
         for (int i = 0; i < repeaters.size(); i++) {
-            if (repeaters.get(i).modelKey.equals(lastEditedModelKey)) {
+            if (repeaters.get(i).getId().equals(lastEditedRepeaterId)) {
                 lastMatch = i;
             }
         }
@@ -149,11 +163,10 @@ public class RailEditorVisualScreen extends SelectListScreen {
 
         for (int i = 0; i < repeaters.size(); i++) {
             RailModelRepeater p = repeaters.get(i);
-            String modelLabel = p.modelKey.isEmpty() ? Text.translatable("gui.mtr.rail_editor_visual.default_model").getString() : p.modelKey;
-            RailModelProperties props = RailModelRegistry.elements.get(p.modelKey);
-            if (props != null && !props.name.getString().isEmpty()) {
-                modelLabel = props.name.getString();
-            }
+            String displayId = p.getId();
+            RailModelProperties props = RailModelRegistry.elements.get(displayId);
+            String modelLabel = (props != null && !props.name.getString().isEmpty())
+                    ? props.name.getString() : (displayId.isEmpty() ? "---" : displayId);
             String modeLabel = switch (p.repeaterMode) {
                 case STRETCH_INTERVAL -> "S";
                 case FIXED_INTERVAL -> "F";
@@ -168,6 +181,8 @@ public class RailEditorVisualScreen extends SelectListScreen {
                     Text.literal(btnText),
                     sender -> {
                         selectedLayerIndex = layerIdx;
+                        selectedBaseAttIndex = 0;
+                        selectedOvAttIndex = 0;
                         Minecraft.getInstance().tell(this::loadPage);
                     }
             );
@@ -197,6 +212,8 @@ public class RailEditorVisualScreen extends SelectListScreen {
                 sender -> {
                     getRepeaters().add(new RailModelRepeater());
                     selectedLayerIndex = getRepeaters().size() - 1;
+                    selectedBaseAttIndex = 0;
+                    selectedOvAttIndex = 0;
                     sendUpdate();
                     Minecraft.getInstance().tell(this::loadPage);
                 }
@@ -217,44 +234,6 @@ public class RailEditorVisualScreen extends SelectListScreen {
         int w = rightPanelWidth - 10;
         int halfW = w / 2 - 2;
         int y = 0;
-
-        // -- Model selector --
-        String modelLabel = selected.modelKey.isEmpty() ? Text.translatable("gui.mtr.rail_editor_visual.default_model").getString() : selected.modelKey;
-        RailModelProperties props = RailModelRegistry.elements.get(selected.modelKey);
-        if (props != null && !props.name.getString().isEmpty()) {
-            modelLabel = props.name.getString();
-        }
-        Button modelBtn = UtilitiesClient.newButton(
-                Text.literal(modelLabel),
-                sender -> {
-                    modelSelectTarget = ModelSelectTarget.BASE;
-                    Minecraft.getInstance().tell(this::loadPage);
-                }
-        );
-        IDrawing.setPositionAndWidth(modelBtn, 0, y, w);
-        rightScrollPanel.children.add(modelBtn);
-        y += SQUARE_SIZE + 4;
-
-        // -- Direction --
-        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, halfW,
-                Text.translatable("gui.mtr.rail_editor_visual.direction")));
-
-        Button btnNormal = UtilitiesClient.newButton(
-                Text.translatable("gui.mtr.rail_editor_visual.facing_away"),
-                sender -> { selected.reversed = false; sendUpdate(); Minecraft.getInstance().tell(this::loadPage); }
-        );
-        btnNormal.active = selected.reversed;
-        IDrawing.setPositionAndWidth(btnNormal, halfW + 4, y, (w - halfW - 4) / 2 - 1);
-        rightScrollPanel.children.add(btnNormal);
-
-        Button btnReversed = UtilitiesClient.newButton(
-                Text.translatable("gui.mtr.rail_editor_visual.facing_here"),
-                sender -> { selected.reversed = true; sendUpdate(); Minecraft.getInstance().tell(this::loadPage); }
-        );
-        btnReversed.active = !selected.reversed;
-        IDrawing.setPositionAndWidth(btnReversed, halfW + 4 + (w - halfW - 4) / 2 + 1, y, (w - halfW - 4) / 2 - 1);
-        rightScrollPanel.children.add(btnReversed);
-        y += SQUARE_SIZE + 2;
 
         // -- Interval override --
         rightScrollPanel.children.add(new WidgetLabel(0, y + 6, halfW,
@@ -321,9 +300,15 @@ public class RailEditorVisualScreen extends SelectListScreen {
         if (selected.repeaterMode == RepeaterMode.FIXED_INTERVAL) {
             y = loadFixedPanel(selected, y, w);
         }
+        y += 20;
+
+        // -- Attachments sub-list (vertical) --
+        y = loadAttachmentPanel(selected, y, w);
+        y += 20;
 
         // -- Position bar (all modes) --
         y = loadPositionBar(selected, y, w);
+//        y += 20;
 
         // -- Instance override panel --
         loadInstanceOverridePanel(selected, y, w);
@@ -390,13 +375,14 @@ public class RailEditorVisualScreen extends SelectListScreen {
 
         boolean canContinue = lastTerminalNode != null
                 && lastTerminalNode.equals(pickedPosStart)
-                && repeater.modelKey.equals(lastPropagateModelKey);
+                && repeater.getId().equals(lastPropagateRepeaterId);
         Button btnContinue = UtilitiesClient.newButton(
                 Text.translatable("gui.mtr.rail_editor_visual.continue_propagate"),
                 sender -> {
                     repeater.offset = lastExitOffset;
                     repeater.offsetFromStart = userIsAtCanonStart();
                     repeater.intervalOverride = lastPropagateInterval;
+                    applyExitFMI(repeater, lastExitFMI);
                     sendUpdate();
                     Minecraft.getInstance().tell(() -> sendPropagate(repeater, false));
                 }
@@ -408,6 +394,218 @@ public class RailEditorVisualScreen extends SelectListScreen {
 
         return y;
     }
+
+    private void applyExitFMI(RailModelRepeater repeater, int[] exitFMI) {
+        for (int i = 0; i < Math.min(exitFMI.length, repeater.attachments.size()); i++) {
+            repeater.attachments.get(i).firstModelIndex = exitFMI[i];
+        }
+    }
+
+    // ==================== Attachment List Editor (reusable) ====================
+
+    private int getSelectedAttIndex(ModelSelectTarget target) {
+        return target == ModelSelectTarget.ATTACHMENT_BASE ? selectedBaseAttIndex : selectedOvAttIndex;
+    }
+
+    private void setSelectedAttIndex(ModelSelectTarget target, int idx) {
+        if (target == ModelSelectTarget.ATTACHMENT_BASE) selectedBaseAttIndex = idx;
+        else selectedOvAttIndex = idx;
+    }
+
+    private int loadAttachmentListEditor(List<RepeaterAttachment> attList, int y, int w,
+                                         int leftMargin, ModelSelectTarget selectTarget) {
+        int innerW = w - leftMargin;
+        int selIdx = getSelectedAttIndex(selectTarget);
+
+        int attBtnWidth = innerW - SQUARE_SIZE * 2;
+
+        for (int i = 0; i < attList.size(); i++) {
+            RepeaterAttachment att = attList.get(i);
+            String attLabel = getAttachmentLabel(att);
+            final int attIdx = i;
+
+            Button attBtn = UtilitiesClient.newButton(
+                    Text.literal(attLabel),
+                    sender -> {
+                        setSelectedAttIndex(selectTarget, attIdx);
+                        Minecraft.getInstance().tell(this::loadPage);
+                    }
+            );
+            attBtn.active = (i != selIdx);
+            IDrawing.setPositionAndWidth(attBtn, leftMargin, y, attBtnWidth);
+            rightScrollPanel.children.add(attBtn);
+
+            Button delAttBtn = UtilitiesClient.newButton(
+                    Text.literal("x"),
+                    sender -> {
+                        if (attList.size() > 1) {
+                            attList.remove(attIdx);
+                            int cur = getSelectedAttIndex(selectTarget);
+                            if (cur >= attList.size()) {
+                                setSelectedAttIndex(selectTarget, attList.size() - 1);
+                            }
+                            sendUpdate();
+                            Minecraft.getInstance().tell(this::loadPage);
+                        }
+                    }
+            );
+            delAttBtn.active = attList.size() > 1;
+            IDrawing.setPositionAndWidth(delAttBtn, leftMargin + attBtnWidth, y, SQUARE_SIZE);
+            rightScrollPanel.children.add(delAttBtn);
+
+            y += SQUARE_SIZE;
+        }
+
+        y -= SQUARE_SIZE;
+        Button addAttBtn = UtilitiesClient.newButton(
+                Text.literal("+"),
+                sender -> {
+                    attList.add(new RepeaterAttachment());
+                    setSelectedAttIndex(selectTarget, attList.size() - 1);
+                    sendUpdate();
+                    Minecraft.getInstance().tell(this::loadPage);
+                }
+        );
+        IDrawing.setPositionAndWidth(addAttBtn, leftMargin + innerW - SQUARE_SIZE, y, SQUARE_SIZE);
+        rightScrollPanel.children.add(addAttBtn);
+        y += SQUARE_SIZE + 4;
+
+        if (selIdx >= 0 && selIdx < attList.size()) {
+            y = loadAttachmentDetail(attList.get(selIdx), y, w, leftMargin + 20, selectTarget);
+        }
+
+        return y;
+    }
+
+    private int loadAttachmentPanel(RailModelRepeater repeater, int y, int w) {
+        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, w,
+                Text.translatable("gui.mtr.rail_editor_visual.attachments")));
+        y += SQUARE_SIZE - 2;
+
+        y = loadAttachmentListEditor(repeater.attachments, y, w, 0, ModelSelectTarget.ATTACHMENT_BASE);
+        return y;
+    }
+
+    private int loadAttachmentDetail(RepeaterAttachment att, int y, int w,
+                                     int leftMargin, ModelSelectTarget selectTarget) {
+        int innerW = w - leftMargin;
+        int halfW = innerW / 2 - 2;
+
+        // -- Model Type selector --
+        String modelLabel = getAttachmentLabel(att);
+        Button modelBtn = UtilitiesClient.newButton(
+                Text.literal(modelLabel),
+                sender -> {
+                    modelSelectTarget = selectTarget;
+                    Minecraft.getInstance().tell(this::loadPage);
+                }
+        );
+        IDrawing.setPositionAndWidth(modelBtn, leftMargin, y, innerW);
+        rightScrollPanel.children.add(modelBtn);
+        y += SQUARE_SIZE + 2;
+
+        // -- Direction --
+        rightScrollPanel.children.add(new WidgetLabel(leftMargin, y + 6, halfW,
+                Text.translatable("gui.mtr.rail_editor_visual.direction")));
+
+        Button btnNormal = UtilitiesClient.newButton(
+                Text.translatable("gui.mtr.rail_editor_visual.facing_away"),
+                sender -> { att.reversed = false; sendUpdate(); Minecraft.getInstance().tell(this::loadPage); }
+        );
+        btnNormal.active = att.reversed;
+        IDrawing.setPositionAndWidth(btnNormal, leftMargin + halfW + 4, y, (innerW - halfW - 4) / 2 - 1);
+        rightScrollPanel.children.add(btnNormal);
+
+        Button btnReversed = UtilitiesClient.newButton(
+                Text.translatable("gui.mtr.rail_editor_visual.facing_here"),
+                sender -> { att.reversed = true; sendUpdate(); Minecraft.getInstance().tell(this::loadPage); }
+        );
+        btnReversed.active = !att.reversed;
+        IDrawing.setPositionAndWidth(btnReversed, leftMargin + halfW + 4 + (innerW - halfW - 4) / 2 + 1, y, (innerW - halfW - 4) / 2 - 1);
+        rightScrollPanel.children.add(btnReversed);
+        y += SQUARE_SIZE + 2;
+
+        // -- XYZ offset --
+        int thirdW = innerW / 3 - 2;
+        rightScrollPanel.children.add(new WidgetLabel(leftMargin, y + 6, thirdW,
+                Text.translatable("gui.mtr.rail_editor_visual.offset_x")));
+        rightScrollPanel.children.add(new WidgetLabel(leftMargin + thirdW + 2, y + 6, thirdW,
+                Text.translatable("gui.mtr.rail_editor_visual.offset_y")));
+        rightScrollPanel.children.add(new WidgetLabel(leftMargin + thirdW * 2 + 4, y + 6, thirdW,
+                Text.translatable("gui.mtr.rail_editor_visual.offset_z")));
+        y += SQUARE_SIZE - 4;
+
+        WidgetBetterTextField fieldX = new WidgetBetterTextField("0", 8);
+        IDrawing.setPositionAndWidth(fieldX, leftMargin, y, thirdW);
+        fieldX.setValue(String.format("%.3f", att.offsetX));
+        fieldX.setResponder(text -> {
+            try { att.offsetX = text.isEmpty() ? 0 : Float.parseFloat(text); fieldX.setTextColor(0xE0E0E0); sendUpdate(); }
+            catch (NumberFormatException e) { fieldX.setTextColor(0xFF0000); }
+        });
+        rightScrollPanel.children.add(fieldX);
+
+        WidgetBetterTextField fieldY = new WidgetBetterTextField("0", 8);
+        IDrawing.setPositionAndWidth(fieldY, leftMargin + thirdW + 2, y, thirdW);
+        fieldY.setValue(String.format("%.3f", att.offsetY));
+        fieldY.setResponder(text -> {
+            try { att.offsetY = text.isEmpty() ? 0 : Float.parseFloat(text); fieldY.setTextColor(0xE0E0E0); sendUpdate(); }
+            catch (NumberFormatException e) { fieldY.setTextColor(0xFF0000); }
+        });
+        rightScrollPanel.children.add(fieldY);
+
+        WidgetBetterTextField fieldZ = new WidgetBetterTextField("0", 8);
+        IDrawing.setPositionAndWidth(fieldZ, leftMargin + thirdW * 2 + 4, y, thirdW);
+        fieldZ.setValue(String.format("%.3f", att.offsetZ));
+        fieldZ.setResponder(text -> {
+            try { att.offsetZ = text.isEmpty() ? 0 : Float.parseFloat(text); fieldZ.setTextColor(0xE0E0E0); sendUpdate(); }
+            catch (NumberFormatException e) { fieldZ.setTextColor(0xFF0000); }
+        });
+        rightScrollPanel.children.add(fieldZ);
+        y += SQUARE_SIZE + 2;
+
+        // -- First Model Index (only if multi-model type) --
+        RailModelProperties props = RailModelRegistry.elements.get(att.modelTypeKey);
+        int modelCount = (props != null) ? props.getModelCount() : 0;
+        if (modelCount > 1) {
+            rightScrollPanel.children.add(new WidgetLabel(leftMargin, y + 6, halfW,
+                    Text.translatable("gui.mtr.rail_editor_visual.first_model_index")));
+
+            Button btnDecFMI = UtilitiesClient.newButton(Text.literal("<"), sender -> {
+                att.firstModelIndex = (att.firstModelIndex - 1 + modelCount) % modelCount;
+                sendUpdate(); Minecraft.getInstance().tell(this::loadPage);
+            });
+            IDrawing.setPositionAndWidth(btnDecFMI, leftMargin + halfW + 4, y, SQUARE_SIZE);
+            rightScrollPanel.children.add(btnDecFMI);
+
+            rightScrollPanel.children.add(new WidgetLabel(leftMargin + halfW + 4 + SQUARE_SIZE, y + 6,
+                    innerW - halfW - 4 - SQUARE_SIZE * 2,
+                    Text.literal(String.format("%d / %d", att.firstModelIndex % modelCount, modelCount))));
+
+            Button btnIncFMI = UtilitiesClient.newButton(Text.literal(">"), sender -> {
+                att.firstModelIndex = (att.firstModelIndex + 1) % modelCount;
+                sendUpdate(); Minecraft.getInstance().tell(this::loadPage);
+            });
+            IDrawing.setPositionAndWidth(btnIncFMI, leftMargin + innerW - SQUARE_SIZE, y, SQUARE_SIZE);
+            rightScrollPanel.children.add(btnIncFMI);
+            y += SQUARE_SIZE + 2;
+        }
+
+        y += 4;
+        return y;
+    }
+
+    private String getAttachmentLabel(RepeaterAttachment att) {
+        if (att.modelTypeKey.isEmpty()) {
+            return Text.translatable("gui.mtr.rail_editor_visual.default_model").getString();
+        }
+        RailModelProperties props = RailModelRegistry.elements.get(att.modelTypeKey);
+        if (props != null && !props.name.getString().isEmpty()) {
+            return props.name.getString();
+        }
+        return att.modelTypeKey;
+    }
+
+    // ==================== Position Bar ====================
 
     private WidgetManualPositionBar currentBar;
     private WidgetBetterTextField positionInputField;
@@ -467,9 +665,12 @@ public class RailEditorVisualScreen extends SelectListScreen {
         }
 
         Set<Integer> ovIndices = new HashSet<>();
-        Map<Integer, RailModelRepeater.InstanceModelOverride> displayOverrides = getDisplayOverrides(repeater, flipForDisplay, displayPositions.size());
-        for (Map.Entry<Integer, RailModelRepeater.InstanceModelOverride> e : displayOverrides.entrySet()) {
-            if (!e.getValue().isDefault()) ovIndices.add(e.getKey());
+        int posCount = computedPositions.size();
+        for (int canonIdx : repeater.instanceOverrides.keySet()) {
+            int displayIdx = flipForDisplay ? (posCount - 1 - canonIdx) : canonIdx;
+            if (displayIdx >= 0 && displayIdx < posCount) {
+                ovIndices.add(displayIdx);
+            }
         }
         currentBar.setOverrideIndices(ovIndices);
 
@@ -490,7 +691,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
             positionInputField = new WidgetBetterTextField("", 10);
             IDrawing.setPositionAndWidth(positionInputField, halfW + 4, y, halfW);
             rightScrollPanel.children.add(positionInputField);
-            updatePositionInputField(repeater, true);
+            updatePositionInputField(true);
             positionInputField.setResponder(text -> {
                 if (currentBar == null) return;
                 int sel = currentBar.getSelectedIndex();
@@ -512,18 +713,65 @@ public class RailEditorVisualScreen extends SelectListScreen {
         return y;
     }
 
-    private Map<Integer, RailModelRepeater.InstanceModelOverride> getDisplayOverrides(
-            RailModelRepeater repeater, boolean flipForDisplay, int posCount) {
-        if (!flipForDisplay) return repeater.instanceOverrides;
-        Map<Integer, RailModelRepeater.InstanceModelOverride> result = new HashMap<>();
-        for (Map.Entry<Integer, RailModelRepeater.InstanceModelOverride> e : repeater.instanceOverrides.entrySet()) {
-            int canonIdx = e.getKey();
-            int displayIdx = posCount - 1 - canonIdx;
-            if (displayIdx >= 0 && displayIdx < posCount) {
-                result.put(displayIdx, e.getValue());
-            }
+    // ==================== Instance Override Panel ====================
+
+    private void loadInstanceOverridePanel(RailModelRepeater repeater, int y, int w) {
+        if (currentBar == null) return;
+        int sel = currentBar.getSelectedIndex();
+        if (sel < 0) return;
+
+        int posCount = getPositionCount(repeater);
+        int canonIdx = displayIndexToCanonIndex(sel, posCount);
+        if (canonIdx < 0 || canonIdx >= posCount) return;
+
+        RailModelInstanceOverride override = repeater.instanceOverrides.get(canonIdx);
+        boolean hasOverride = override != null && !override.isEmpty();
+
+        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, w,
+                Text.translatable("gui.mtr.rail_editor_visual.instance_override")));
+        y += SQUARE_SIZE - 2;
+
+        final int cIdx = canonIdx;
+        if (!hasOverride) {
+            Button btnAddOverride = UtilitiesClient.newButton(
+                    Text.translatable("gui.mtr.rail_editor_visual.override_model"),
+                    sender -> {
+                        RailModelInstanceOverride newOv = new RailModelInstanceOverride();
+                        newOv.attachments = new ArrayList<>(repeater.attachments.size());
+                        for (RepeaterAttachment att : repeater.attachments) {
+                            newOv.attachments.add(att.copy());
+                        }
+                        repeater.instanceOverrides.put(cIdx, newOv);
+                        selectedOvAttIndex = 0;
+                        sendUpdate();
+                        Minecraft.getInstance().tell(this::loadPage);
+                    }
+            );
+            IDrawing.setPositionAndWidth(btnAddOverride, 0, y, w);
+            rightScrollPanel.children.add(btnAddOverride);
+        } else {
+            Button btnRemoveOverride = UtilitiesClient.newButton(
+                    Text.translatable("gui.mtr.rail_editor_visual.cancel_override_model"),
+                    sender -> {
+                        repeater.instanceOverrides.remove(cIdx);
+                        sendUpdate();
+                        Minecraft.getInstance().tell(this::loadPage);
+                    }
+            );
+            IDrawing.setPositionAndWidth(btnRemoveOverride, 0, y, w);
+            rightScrollPanel.children.add(btnRemoveOverride);
+            y += SQUARE_SIZE + 4;
+
+            y = loadAttachmentListEditor(override.attachments, y, w,
+                    20, ModelSelectTarget.ATTACHMENT_INSTANCE);
         }
-        return result;
+    }
+
+    private int getPositionCount(RailModelRepeater repeater) {
+        if (repeater.repeaterMode == RepeaterMode.MANUAL) {
+            return repeater.manualPositions.size();
+        }
+        return computePositionsForCurrentMode(repeater).size();
     }
 
     private int displayIndexToCanonIndex(int displayIdx, int posCount) {
@@ -531,168 +779,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
         return flipForDisplay ? (posCount - 1 - displayIdx) : displayIdx;
     }
 
-    private void loadInstanceOverridePanel(RailModelRepeater repeater, int y, int w) {
-        if (currentBar == null) return;
-        int sel = currentBar.getSelectedIndex();
-        if (sel < 0) return;
-
-        List<Float> computedPositions;
-        if (repeater.repeaterMode == RepeaterMode.MANUAL) {
-            computedPositions = repeater.manualPositions;
-        } else {
-            computedPositions = computePositionsForCurrentMode(repeater);
-        }
-        int posCount = computedPositions.size();
-        int canonIdx = displayIndexToCanonIndex(sel, posCount);
-        if (canonIdx < 0 || canonIdx >= posCount) return;
-
-        RailModelRepeater.InstanceModelOverride override = repeater.instanceOverrides.get(canonIdx);
-        boolean hasOverride = override != null && !override.isDefault();
-
-        int halfW = w / 2 - 2;
-
-        // -- Instance model override --
-        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, w,
-                Text.translatable("gui.mtr.rail_editor_visual.instance_override")));
-        y += SQUARE_SIZE - 2;
-
-        String ovModelLabel;
-        if (override != null && !override.modelKeyOverride.isEmpty()) {
-            RailModelProperties ovProps = RailModelRegistry.elements.get(override.modelKeyOverride);
-            ovModelLabel = (ovProps != null && !ovProps.name.getString().isEmpty())
-                    ? ovProps.name.getString() : override.modelKeyOverride;
-        } else {
-            ovModelLabel = Text.translatable("gui.mtr.rail_editor_visual.base_model").getString();
-        }
-
-        Button ovModelBtn = UtilitiesClient.newButton(
-                Text.literal(ovModelLabel),
-                sender -> {
-                    modelSelectTarget = ModelSelectTarget.INSTANCE;
-                    Minecraft.getInstance().tell(this::loadPage);
-                }
-        );
-        IDrawing.setPositionAndWidth(ovModelBtn, 0, y, hasOverride ? w - SQUARE_SIZE - 2 : w);
-        rightScrollPanel.children.add(ovModelBtn);
-
-        if (hasOverride) {
-            final int cIdx = canonIdx;
-            Button deleteOvBtn = UtilitiesClient.newButton(
-                    Text.literal("x"),
-                    sender -> {
-                        repeater.instanceOverrides.remove(cIdx);
-                        sendUpdate();
-                        Minecraft.getInstance().tell(this::loadPage);
-                    }
-            );
-            IDrawing.setPositionAndWidth(deleteOvBtn, w - SQUARE_SIZE, y, SQUARE_SIZE);
-            rightScrollPanel.children.add(deleteOvBtn);
-        }
-        y += SQUARE_SIZE + 2;
-
-        // -- Instance direction --
-        {
-            final int cIdx0 = canonIdx;
-            int halfW = w / 2 - 2;
-            rightScrollPanel.children.add(new WidgetLabel(0, y + 6, halfW,
-                    Text.translatable("gui.mtr.rail_editor_visual.instance_direction")));
-            boolean isReversedOv = override != null && override.reversed;
-            Button btnSameDir = UtilitiesClient.newButton(
-                    Text.translatable("gui.mtr.rail_editor_visual.same_as_base"),
-                    sender -> {
-                        RailModelRepeater.InstanceModelOverride ov = repeater.instanceOverrides
-                                .computeIfAbsent(cIdx0, k -> new RailModelRepeater.InstanceModelOverride());
-                        ov.reversed = false;
-                        sendUpdate();
-                        Minecraft.getInstance().tell(this::loadPage);
-                    }
-            );
-            btnSameDir.active = isReversedOv;
-            IDrawing.setPositionAndWidth(btnSameDir, halfW + 4, y, (w - halfW - 4) / 2 - 1);
-            rightScrollPanel.children.add(btnSameDir);
-
-            Button btnFlipDir = UtilitiesClient.newButton(
-                    Text.translatable("gui.mtr.rail_editor_visual.opposite_to_base"),
-                    sender -> {
-                        RailModelRepeater.InstanceModelOverride ov = repeater.instanceOverrides
-                                .computeIfAbsent(cIdx0, k -> new RailModelRepeater.InstanceModelOverride());
-                        ov.reversed = true;
-                        sendUpdate();
-                        Minecraft.getInstance().tell(this::loadPage);
-                    }
-            );
-            btnFlipDir.active = !isReversedOv;
-            IDrawing.setPositionAndWidth(btnFlipDir, halfW + 4 + (w - halfW - 4) / 2 + 1, y, (w - halfW - 4) / 2 - 1);
-            rightScrollPanel.children.add(btnFlipDir);
-            y += SQUARE_SIZE + 2;
-        }
-
-        // -- XYZ offset --
-        int thirdW = w / 3 - 2;
-
-        rightScrollPanel.children.add(new WidgetLabel(0, y + 6, thirdW,
-                Text.translatable("gui.mtr.rail_editor_visual.offset_x")));
-        rightScrollPanel.children.add(new WidgetLabel(thirdW + 2, y + 6, thirdW,
-                Text.translatable("gui.mtr.rail_editor_visual.offset_y")));
-        rightScrollPanel.children.add(new WidgetLabel(thirdW * 2 + 4, y + 6, thirdW,
-                Text.translatable("gui.mtr.rail_editor_visual.offset_z")));
-        y += SQUARE_SIZE - 4;
-
-        final int cIdx = canonIdx;
-
-        WidgetBetterTextField fieldX = new WidgetBetterTextField("0", 8);
-        IDrawing.setPositionAndWidth(fieldX, 0, y, thirdW);
-        fieldX.setValue(override != null ? String.format("%.3f", override.offsetX) : "0");
-        fieldX.setResponder(text -> {
-            try {
-                float val = text.isEmpty() ? 0 : Float.parseFloat(text);
-                RailModelRepeater.InstanceModelOverride ov = repeater.instanceOverrides
-                        .computeIfAbsent(cIdx, k -> new RailModelRepeater.InstanceModelOverride());
-                ov.offsetX = val;
-                fieldX.setTextColor(0xE0E0E0);
-                sendUpdate();
-            } catch (NumberFormatException e) {
-                fieldX.setTextColor(0xFF0000);
-            }
-        });
-        rightScrollPanel.children.add(fieldX);
-
-        WidgetBetterTextField fieldY = new WidgetBetterTextField("0", 8);
-        IDrawing.setPositionAndWidth(fieldY, thirdW + 2, y, thirdW);
-        fieldY.setValue(override != null ? String.format("%.3f", override.offsetY) : "0");
-        fieldY.setResponder(text -> {
-            try {
-                float val = text.isEmpty() ? 0 : Float.parseFloat(text);
-                RailModelRepeater.InstanceModelOverride ov = repeater.instanceOverrides
-                        .computeIfAbsent(cIdx, k -> new RailModelRepeater.InstanceModelOverride());
-                ov.offsetY = val;
-                fieldY.setTextColor(0xE0E0E0);
-                sendUpdate();
-            } catch (NumberFormatException e) {
-                fieldY.setTextColor(0xFF0000);
-            }
-        });
-        rightScrollPanel.children.add(fieldY);
-
-        WidgetBetterTextField fieldZ = new WidgetBetterTextField("0", 8);
-        IDrawing.setPositionAndWidth(fieldZ, thirdW * 2 + 4, y, thirdW);
-        fieldZ.setValue(override != null ? String.format("%.3f", override.offsetZ) : "0");
-        fieldZ.setResponder(text -> {
-            try {
-                float val = text.isEmpty() ? 0 : Float.parseFloat(text);
-                RailModelRepeater.InstanceModelOverride ov = repeater.instanceOverrides
-                        .computeIfAbsent(cIdx, k -> new RailModelRepeater.InstanceModelOverride());
-                ov.offsetZ = val;
-                fieldZ.setTextColor(0xE0E0E0);
-                sendUpdate();
-            } catch (NumberFormatException e) {
-                fieldZ.setTextColor(0xFF0000);
-            }
-        });
-        rightScrollPanel.children.add(fieldZ);
-    }
-
-    private void updatePositionInputField(RailModelRepeater repeater, boolean editable) {
+    private void updatePositionInputField(boolean editable) {
         if (positionInputField == null || currentBar == null) return;
         int sel = currentBar.getSelectedIndex();
         if (sel >= 0) {
@@ -741,12 +828,13 @@ public class RailEditorVisualScreen extends SelectListScreen {
 
     private float resolveInterval(RailModelRepeater p) {
         if (p.intervalOverride > 0) return p.intervalOverride;
+        String primaryKey = p.getPrimaryModelTypeKey();
         String resolvedKey = pickedRail != null
-                ? RailRenderDispatcher.getModelKeyForRender(pickedRail, p.modelKey)
-                : p.modelKey;
+                ? RailRenderDispatcher.getModelKeyForRender(pickedRail, primaryKey)
+                : primaryKey;
         RailModelProperties props = RailModelRegistry.elements.get(resolvedKey);
         if (props != null && props.repeatInterval > 0) return props.repeatInterval;
-        props = RailModelRegistry.elements.get(p.modelKey);
+        props = RailModelRegistry.elements.get(primaryKey);
         if (props != null && props.repeatInterval > 0) return props.repeatInterval;
         return 1.0f;
     }
@@ -791,6 +879,8 @@ public class RailEditorVisualScreen extends SelectListScreen {
         return result;
     }
 
+    // ==================== Propagation ====================
+
     private void sendPropagate(RailModelRepeater repeater, boolean undo) {
         final FriendlyByteBuf packet = new FriendlyByteBuf(Unpooled.buffer());
         if (undo) {
@@ -800,10 +890,16 @@ public class RailEditorVisualScreen extends SelectListScreen {
             packet.writeBlockPos(pickedPosStart);
             packet.writeBlockPos(pickedPosEnd);
             packet.writeVarInt(selectedLayerIndex);
-            packet.writeUtf(repeater.modelKey);
+            packet.writeUtf(repeater.getId());
             packet.writeFloat(resolveInterval(repeater));
-            packet.writeBoolean(repeater.reversed);
             packet.writeFloat(repeater.offset);
+            packet.writeVarInt(repeater.attachments.size());
+            for (RepeaterAttachment att : repeater.attachments) {
+                RailModelProperties props = RailModelRegistry.elements.get(att.modelTypeKey);
+                int modelCount = (props != null) ? props.getModelCount() : 1;
+                packet.writeVarInt(modelCount);
+                packet.writeVarInt(att.firstModelIndex);
+            }
         }
         RegistryClient.sendToServer(IPacket.PACKET_PROPAGATE_REPEATER_OFFSET, packet);
         onClose();
@@ -814,22 +910,9 @@ public class RailEditorVisualScreen extends SelectListScreen {
         RailModelRepeater sel = getSelectedRepeater();
         if (sel == null) return;
 
-        if (modelSelectTarget == ModelSelectTarget.INSTANCE && currentBar != null) {
-            int displayIdx = currentBar.getSelectedIndex();
-            List<Float> computedPositions;
-            if (sel.repeaterMode == RepeaterMode.MANUAL) {
-                computedPositions = sel.manualPositions;
-            } else {
-                computedPositions = computePositionsForCurrentMode(sel);
-            }
-            int canonIdx = displayIndexToCanonIndex(displayIdx, computedPositions.size());
-            if (canonIdx >= 0 && canonIdx < computedPositions.size()) {
-                RailModelRepeater.InstanceModelOverride ov = sel.instanceOverrides
-                        .computeIfAbsent(canonIdx, k -> new RailModelRepeater.InstanceModelOverride());
-                ov.modelKeyOverride = btnKey;
-            }
-        } else {
-            sel.modelKey = btnKey;
+        RepeaterAttachment targetAtt = getTargetAttachment(sel);
+        if (targetAtt != null) {
+            targetAtt.modelTypeKey = btnKey;
         }
         sendUpdate();
     }
@@ -861,9 +944,13 @@ public class RailEditorVisualScreen extends SelectListScreen {
     public static void receivePropagationResult(FriendlyByteBuf packet) {
         lastTerminalNode = packet.readBlockPos();
         lastExitOffset = packet.readFloat();
-        lastPropagateModelKey = packet.readUtf();
+        lastPropagateRepeaterId = packet.readUtf();
         lastPropagateInterval = packet.readFloat();
-        lastPropagateReversed = packet.readBoolean();
+        int attCount = packet.readVarInt();
+        lastExitFMI = new int[attCount];
+        for (int i = 0; i < attCount; i++) {
+            lastExitFMI[i] = packet.readVarInt();
+        }
     }
 
     public static void acquirePickInfoWhenUse() {
@@ -897,20 +984,17 @@ public class RailEditorVisualScreen extends SelectListScreen {
                 extra.setIsSecondaryDir(!extra.getIsSecondaryDir());
             } else {
                 for (RailModelRepeater tp : template) {
-                    RailModelRepeater existing = findByModelKey(current, tp.modelKey);
+                    RailModelRepeater existing = findById(current, tp.getId());
                     if (existing != null) {
                         if (tp.repeaterMode == RepeaterMode.MANUAL) continue;
                         existing.repeaterMode = tp.repeaterMode;
-                        existing.reversed = tp.reversed;
                         existing.intervalOverride = tp.intervalOverride;
+                        existing.attachments = new ArrayList<>();
+                        for (RepeaterAttachment att : tp.attachments) {
+                            existing.attachments.add(att.copy());
+                        }
                     } else {
-                        RailModelRepeater newP = new RailModelRepeater();
-                        newP.modelKey = tp.modelKey;
-                        newP.reversed = tp.reversed;
-                        newP.intervalOverride = tp.intervalOverride;
-                        newP.repeaterMode = tp.repeaterMode == RepeaterMode.MANUAL
-                                ? RepeaterMode.STRETCH_INTERVAL : tp.repeaterMode;
-                        current.add(newP);
+                        current.add(tp.copy());
                     }
                 }
             }
@@ -918,16 +1002,16 @@ public class RailEditorVisualScreen extends SelectListScreen {
         PacketUpdateRail.sendUpdateC2S(pickedRail, pickedPosStart, pickedPosEnd);
     }
 
-    private static RailModelRepeater findByModelKey(List<RailModelRepeater> list, String modelKey) {
+    private static RailModelRepeater findById(List<RailModelRepeater> list, String id) {
         for (RailModelRepeater p : list) {
-            if (p.modelKey.equals(modelKey)) return p;
+            if (p.getId().equals(id)) return p;
         }
         return null;
     }
 
     private static boolean templateMatchesCurrent(List<RailModelRepeater> current, List<RailModelRepeater> template) {
         for (RailModelRepeater tp : template) {
-            RailModelRepeater cp = findByModelKey(current, tp.modelKey);
+            RailModelRepeater cp = findById(current, tp.getId());
             if (cp == null) return false;
             if (cp.repeaterMode != tp.repeaterMode
                     || cp.intervalOverride != tp.intervalOverride) return false;
@@ -940,10 +1024,21 @@ public class RailEditorVisualScreen extends SelectListScreen {
         for (int i = 0; i < repeaters.size(); i++) {
             RailModelRepeater p = repeaters.get(i);
             CompoundTag layerTag = new CompoundTag();
-            layerTag.putString("ModelKey", p.modelKey);
+            layerTag.putString("Id", p.id);
             layerTag.putInt("Mode", p.repeaterMode.ordinal());
-            layerTag.putBoolean("Reversed", p.reversed);
             layerTag.putFloat("IntervalOverride", p.intervalOverride);
+            layerTag.putInt("AttachmentCount", p.attachments.size());
+            for (int j = 0; j < p.attachments.size(); j++) {
+                RepeaterAttachment att = p.attachments.get(j);
+                CompoundTag attTag = new CompoundTag();
+                attTag.putString("ModelTypeKey", att.modelTypeKey);
+                attTag.putBoolean("Reversed", att.reversed);
+                attTag.putFloat("OffsetX", att.offsetX);
+                attTag.putFloat("OffsetY", att.offsetY);
+                attTag.putFloat("OffsetZ", att.offsetZ);
+                attTag.putInt("FirstModelIndex", att.firstModelIndex);
+                layerTag.put("Att_" + j, attTag);
+            }
             tag.put("Repeater_" + i, layerTag);
         }
     }
@@ -955,10 +1050,32 @@ public class RailEditorVisualScreen extends SelectListScreen {
             CompoundTag layerTag = tag.getCompound("Repeater_" + i);
             if (layerTag.isEmpty()) continue;
             RailModelRepeater p = new RailModelRepeater();
-            p.modelKey = layerTag.getString("ModelKey");
+            p.id = layerTag.getString("Id");
             p.repeaterMode = RepeaterMode.fromIndex(layerTag.getInt("Mode"));
-            p.reversed = layerTag.getBoolean("Reversed");
             p.intervalOverride = layerTag.getFloat("IntervalOverride");
+
+            int attCount = layerTag.getInt("AttachmentCount");
+            if (attCount > 0) {
+                p.attachments.clear();
+                for (int j = 0; j < attCount; j++) {
+                    CompoundTag attTag = layerTag.getCompound("Att_" + j);
+                    RepeaterAttachment att = new RepeaterAttachment();
+                    att.modelTypeKey = attTag.getString("ModelTypeKey");
+                    att.reversed = attTag.getBoolean("Reversed");
+                    att.offsetX = attTag.getFloat("OffsetX");
+                    att.offsetY = attTag.getFloat("OffsetY");
+                    att.offsetZ = attTag.getFloat("OffsetZ");
+                    att.firstModelIndex = attTag.getInt("FirstModelIndex");
+                    p.attachments.add(att);
+                }
+            } else if (layerTag.contains("ModelKey")) {
+                // Legacy NBT compat
+                p.attachments.clear();
+                RepeaterAttachment att = new RepeaterAttachment();
+                att.modelTypeKey = layerTag.getString("ModelKey");
+                att.reversed = layerTag.getBoolean("Reversed");
+                p.attachments.add(att);
+            }
             result.add(p);
         }
         return result;
@@ -984,7 +1101,7 @@ public class RailEditorVisualScreen extends SelectListScreen {
         } else {
             RailModelRepeater sel = getSelectedRepeater();
             if (sel != null) {
-                lastEditedModelKey = sel.modelKey;
+                lastEditedRepeaterId = sel.getId();
                 pruneOverrides(sel);
             }
             this.minecraft.setScreen(null);
@@ -992,8 +1109,8 @@ public class RailEditorVisualScreen extends SelectListScreen {
     }
 
     private void pruneOverrides(RailModelRepeater repeater) {
-        List<Float> positions = computePositionsForCurrentMode(repeater);
-        repeater.pruneOverrides(positions.size());
+        int posCount = getPositionCount(repeater);
+        repeater.pruneOverrides(posCount);
         if (pickedRail != null) sendUpdate();
     }
 

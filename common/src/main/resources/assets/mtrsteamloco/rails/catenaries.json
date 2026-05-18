@@ -75,5 +75,19 @@
     "translation": [ 0, 5, 0 ],
     "rotation": [ 0, 90, 0 ],
     "repeatInterval": 25
+  },
+  "gantry_13": {
+    "name": "Gantry(13)",
+    "model": "mtrsteamloco:rails/catenaries/gantry_13.obj",
+    "translation": [ 0, 7, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
+  },
+  "gantry_17": {
+    "name": "Gantry(17)",
+    "model": "mtrsteamloco:rails/catenaries/gantry_17.obj",
+    "translation": [ 0, 7, 0 ],
+    "rotation": [ 0, 90, 0 ],
+    "repeatInterval": 25
   }
 }

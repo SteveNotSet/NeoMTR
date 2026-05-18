@@ -84,9 +84,8 @@ public abstract class RailMixin implements RailExtraSupplier {
                 repeaters.add(RailModelRepeater.fromMessagePack(v.asMapValue()));
             }
         } else {
-            RailModelRepeater legacy = new RailModelRepeater();
-            legacy.modelKey = messagePackHelper.getString("model_key", "");
-            repeaters = new ArrayList<>(Collections.singletonList(legacy));
+            String legacyModelKey = messagePackHelper.getString("model_key", "");
+            repeaters = new ArrayList<>(Collections.singletonList(new RailModelRepeater(legacyModelKey, false)));
         }
     }
 
@@ -95,11 +94,11 @@ public abstract class RailMixin implements RailExtraSupplier {
         messagePacker.packString("vertical_curve_radius").packFloat(verticalCurveRadius);
 
         if (repeaters.size() == 1 && repeaters.getFirst().isLegacyCompatible()) {
-            messagePacker.packString("model_key").packString(repeaters.getFirst().modelKey);
+            messagePacker.packString("model_key").packString(repeaters.getFirst().getPrimaryModelTypeKey());
             messagePacker.packString("is_secondary_dir").packBoolean(isSecondaryDir);
         } else {
             messagePacker.packString("model_key").packString(repeaters.isEmpty()
-                ? "null" : repeaters.getFirst().modelKey); // Unused
+                ? "null" : repeaters.getFirst().getPrimaryModelTypeKey());
             messagePacker.packString("is_secondary_dir").packBoolean(isSecondaryDir);
             messagePacker.packString("repeaters").packArrayHeader(repeaters.size());
             for (RailModelRepeater repeater : repeaters) {
